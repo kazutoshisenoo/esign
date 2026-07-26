@@ -70,6 +70,10 @@ export const SignView: React.FC<SignViewProps> = ({
   const [isCompleting, setIsCompleting] = useState(false);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
 
+  // 入力モーダル用ステート ★追加
+  const [activeInputField, setActiveInputField] = useState<Field | null>(null);
+  const [modalInputValue, setModalInputValue] = useState('');
+
   // 1. 認証：メールアドレス検証 & OTP送信 (現在の activeSignerId のアドレスと一致するか確認)
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -163,6 +167,9 @@ export const SignView: React.FC<SignViewProps> = ({
     const context = canvas.getContext('2d');
     if (context) {
       await page.render({ canvasContext: context, viewport, canvas }).promise;
+      // ★親コンテナ（pageContainer）のサイズを描画後のCanvasの実際のピクセルサイズにピタッと合わせる！
+      pageContainer.style.width = `${canvas.clientWidth}px`;
+      pageContainer.style.height = `${canvas.clientHeight}px`;
     }
   };
 
@@ -195,6 +202,24 @@ export const SignView: React.FC<SignViewProps> = ({
     const emptyRequiredField = myFields.find(f => f.isRequired !== false && !f.value && f.type !== 'checkbox');
     if (emptyRequiredField) {
       alert(`「${getFieldLabelName(emptyRequiredField.type)}」が入力されていません。すべての必須箇所に入力してください。`);
+      return;
+    }
+
+    // デフォルト名（「署名者 1」「署名者 2」や「署名」）のままで署名完了を押すのをブロック ★追加
+    const defaultNames = ['署名者 1', '署名者 2', '署名者1', '署名者2', '署名', ''];
+    const hasDefaultSignature = myFields.some(f => {
+      if (f.type === 'signature' && f.value) {
+        const namePart = f.value.startsWith('typed:') ? f.value.split(':')[1] : f.value;
+        return defaultNames.includes(namePart.trim());
+      }
+      if (f.type === 'name' && f.value) {
+        return defaultNames.includes(f.value.trim());
+      }
+      return false;
+    });
+
+    if (hasDefaultSignature) {
+      alert('「署名者 1」や「署名者 2」などのデフォルト表記のままでは完了できません。ご自身の正しいお名前に変更してから「署名を完了」してください。');
       return;
     }
 
@@ -353,31 +378,42 @@ export const SignView: React.FC<SignViewProps> = ({
     if (field.type === 'checkbox') {
       const nextVal = field.value === 'true' ? 'false' : 'true';
       setFields(fields.map(f => f.id === field.id ? { ...f, value: nextVal } : f));
-    } else if (field.type === 'signature') {
-      const defaultName = currentSigner?.name || '署名';
-      const signValue = `typed:${defaultName}:font-signature-1`;
-      setFields(fields.map(f => f.id === field.id ? { ...f, value: signValue } : f));
-    } else if (field.type === 'name') {
-      const defaultName = currentSigner?.name || '';
-      setFields(fields.map(f => f.id === field.id ? { ...f, value: defaultName } : f));
-    } else if (field.type === 'date') {
-      const todayStr = new Date().toLocaleDateString('ja-JP', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-      }).replace(/\//g, '-');
-      setFields(fields.map(f => f.id === field.id ? { ...f, value: todayStr } : f));
     } else {
-      const label = field.type === 'company' ? '会社名' : 'テキスト';
-      const defaultVal = field.type === 'company' ? '取引先企業' : '記入データ';
-      let userVal = window.prompt(`${label}を入力してください：`, field.value || defaultVal);
-      if (userVal === null && !field.value) {
-        userVal = defaultVal;
-      }
-      if (userVal !== null) {
-        setFields(fields.map(f => f.id === field.id ? { ...f, value: userVal } : f));
-      }
+      setActiveInputField(field);
+      
+      // 初期値の設定（デフォルトの「署名者 1」等のダミー値は空文字にして、ユーザーに手入力させる）
+      const currentValue = field.value || '';
+      const extractedVal = currentValue.startsWith('typed:') 
+        ? currentValue.split(':')[1] 
+        : currentValue;
+      
+      const defaultNames = ['署名者 1', '署名者 2', '署名者1', '署名者2', '署名'];
+      const initialVal = defaultNames.includes(extractedVal) ? '' : extractedVal;
+      setModalInputValue(initialVal);
     }
+  };
+
+  const handleSaveModalInput = () => {
+    if (!activeInputField) return;
+
+    let finalVal = modalInputValue.trim();
+    if (!finalVal) {
+      alert(`${getFieldLabelName(activeInputField.type)}を入力してください。`);
+      return;
+    }
+
+    const defaultNames = ['署名者 1', '署名者 2', '署名者1', '署名者2', '署名'];
+    if (defaultNames.includes(finalVal)) {
+      alert('「署名者 1」や「署名者 2」などのデフォルト名のままでは適用できません。ご自身の正しいお名前をご入力ください。');
+      return;
+    }
+
+    if (activeInputField.type === 'signature') {
+      finalVal = `typed:${finalVal}:font-signature-1`;
+    }
+
+    setFields(fields.map(f => f.id === activeInputField.id ? { ...f, value: finalVal } : f));
+    setActiveInputField(null);
   };
 
   const getFieldIcon = (type: Field['type']) => {
@@ -445,7 +481,7 @@ export const SignView: React.FC<SignViewProps> = ({
       {
         myActive: 'bg-amber-500/20 border-amber-600 hover:bg-amber-500/35 hover:border-amber-700 text-amber-800',
         other: 'bg-amber-500/10 border-amber-300 text-amber-400 opacity-60 pointer-events-none',
-        filled: 'bg-amber-500/5 border-amber-400 text-amber-600'
+        filled: 'bg-amber-500/5 border-amber-400 text-emerald-600'
       }
     ];
 
@@ -583,7 +619,7 @@ export const SignView: React.FC<SignViewProps> = ({
                   ref={(el) => {
                     pageRefs.current[pageNum] = el;
                   }}
-                  className="relative w-full aspect-[1/1.41] bg-white rounded-lg shadow-xl"
+                  className="relative bg-white rounded-lg shadow-xl mx-auto overflow-hidden shadow-2xl border border-white/5"
                 >
                   <div className="absolute inset-0 z-20 pointer-events-auto">
                     {fields
@@ -631,6 +667,55 @@ export const SignView: React.FC<SignViewProps> = ({
           )}
         </main>
       </div>
+
+      {/* 入力用モーダル (window.prompt を完全廃止しスマホ対応) */}
+      {activeInputField && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <Card className="w-full max-w-sm border-white/10 bg-[#121214]/90 shadow-3xl">
+            <CardContent className="p-6 flex flex-col gap-4 text-left">
+              <div>
+                <h3 className="text-sm font-semibold text-white">
+                  {getFieldLabelName(activeInputField.type)}を入力してください
+                </h3>
+                <p className="text-[11px] text-[#86868b] mt-1">
+                  PDF上の「{activeInputField.type === 'signature' ? '署名印影' : getFieldLabelName(activeInputField.type)}」として挿入されます。
+                </p>
+              </div>
+
+              <input
+                type="text"
+                value={modalInputValue}
+                onChange={(e) => setModalInputValue(e.target.value)}
+                placeholder={`${getFieldLabelName(activeInputField.type)}を入力`}
+                className="w-full px-3 py-2 rounded-lg bg-[#1c1c1f] border border-white/10 text-white placeholder-[#52525b] focus:outline-none focus:border-[#0071e3] transition-all text-sm font-medium"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveModalInput();
+                }}
+              />
+
+              <div className="flex gap-2.5 justify-end mt-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setActiveInputField(null)}
+                  className="text-xs"
+                >
+                  キャンセル
+                </Button>
+                <Button 
+                  variant="primary" 
+                  size="sm" 
+                  onClick={handleSaveModalInput}
+                  className="text-xs bg-blue-600 hover:bg-blue-500"
+                >
+                  適用する
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 };
