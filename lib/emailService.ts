@@ -117,7 +117,7 @@ export async function sendOtpEmail(
         <span style="font-family: monospace; font-size: 32px; font-weight: bold; letter-spacing: 4px; color: #0071e3;">${otp}</span>
       </div>
       <p style="font-size: 11px; color: #9ca3af; line-height: 1.4; margin-top: 24px; border-top: 1px solid #f3f4f6; padding-top: 16px;">
-        ※このメール is 送信専用です。本メールに心当たりがない場合は破棄してください。
+        ※このメールは送信専用です。本メールに心当たりがない場合は破棄してください。
       </p>
     </div>
   `;
@@ -248,6 +248,9 @@ export async function uploadPdfToGas(file: File, gasUrl: string): Promise<string
 
     const response = await fetch(gasUrl, {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify({
         action: 'uploadPdf',
         pdfBase64: pdfBase64,
