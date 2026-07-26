@@ -62,6 +62,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ file, onBack, onSendRequ
 
   const [isLoadingPdf, setIsLoadingPdf] = useState(true);
   const [thumbnails, setThumbnails] = useState<string[]>([]);
+  const [pdfAspectRatio, setPdfAspectRatio] = useState<number>(1.4142); // ★PDF用紙の縦横比アスペクトステート追加
 
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -86,6 +87,15 @@ export const EditorView: React.FC<EditorViewProps> = ({ file, onBack, onSendRequ
         const pdf = await loadingTask.promise;
         setPdfDoc(pdf);
         setNumPages(pdf.numPages);
+        
+        // 最初のページの縦横比を動的に計測してセットする ★追加
+        if (pdf.numPages > 0) {
+          const firstPage = await pdf.getPage(1);
+          const viewport = firstPage.getViewport({ scale: 1.0 });
+          if (viewport.width > 0) {
+            setPdfAspectRatio(viewport.height / viewport.width);
+          }
+        }
         
         // 最初のレンダリング
         await renderAllPages(pdf);
@@ -120,27 +130,28 @@ export const EditorView: React.FC<EditorViewProps> = ({ file, onBack, onSendRequ
     setThumbnails(thumbs);
   };
 
-  // メインのPDFキャンバスのレンダリング
+  // メインのPDFキャンバスのレンダリング ★用紙サイズズレ完全解消 & 高画質化
   const renderMainPage = async (page: pdfjsLib.PDFPageProxy, pageNum: number) => {
     const pageContainer = pageRefs.current[pageNum];
     if (!pageContainer) return;
-
-    // コンテナ幅に合わせて自動スケーリング
-    const containerWidth = pageContainer.clientWidth || 600;
-    const initialViewport = page.getViewport({ scale: 1.0 });
-    const scale = containerWidth / initialViewport.width;
-    const viewport = page.getViewport({ scale });
 
     // 既存のキャンバスがあれば削除
     const oldCanvas = pageContainer.querySelector('canvas');
     if (oldCanvas) oldCanvas.remove();
 
     const canvas = document.createElement('canvas');
+    canvas.className = 'absolute inset-0 w-full h-full shadow-md rounded-lg';
+    pageContainer.insertBefore(canvas, pageContainer.firstChild);
+
+    // 高解像度（2.5倍）で Canvas 内部ピクセルをレンダリング
+    const containerWidth = pageContainer.clientWidth || 600;
+    const initialViewport = page.getViewport({ scale: 1.0 });
+    const scale = containerWidth / initialViewport.width;
+    const outputScale = 2.5; 
+    const viewport = page.getViewport({ scale: scale * outputScale });
+
     canvas.width = viewport.width;
     canvas.height = viewport.height;
-    canvas.className = 'shadow-md border border-white/5 rounded-lg';
-    
-    pageContainer.insertBefore(canvas, pageContainer.firstChild);
 
     const context = canvas.getContext('2d');
     if (context) {
@@ -510,7 +521,8 @@ export const EditorView: React.FC<EditorViewProps> = ({ file, onBack, onSendRequ
                     pageRefs.current[pageNum] = el;
                   }}
                   onClick={() => setCurrentPage(pageNum)}
-                  className="relative w-full aspect-[1/1.41] bg-white rounded-lg shadow-xl"
+                  style={{ aspectRatio: `1 / ${pdfAspectRatio}` }}
+                  className="relative w-full bg-white rounded-lg shadow-xl border border-white/5 overflow-hidden"
                 >
                   {/* Absolute positioning fields overlay layer */}
                   <div className="absolute inset-0 z-20 pointer-events-auto">
