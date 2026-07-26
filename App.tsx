@@ -452,7 +452,7 @@ function App() {
     const doc = documents.find(d => d.id === id);
     if (!doc) return;
 
-    // IndexedDB から docId に対応する元PDFの復元を試みる ★修正
+    // IndexedDB から docId に対応する元PDF of 復元を試みる ★修正
     let file = await restorePdfFromIndexedDB(doc.id);
     if (!file || file.name !== doc.title) {
       file = await generateDemoPdf();
@@ -521,6 +521,10 @@ function App() {
       try {
         console.log('Uploading PDF to Google Drive via GAS...');
         const uploadResult = await uploadPdfToGas(pdfFile, currentGasUrl) as any;
+        if (!uploadResult) {
+          alert("【送信エラー】GoogleドライブへのPDF自動保存に失敗しました。\n\nエラー内容（原因）：古いプログラムがブラウザに残っているか、GASのURLにアクセスできません。\n\n確認項目：\n1. 右上の設定(⚙️)の「Google Apps ScriptのURL」が、編集画面のURLではなく、デプロイからコピーした「ウェブアプリのURL」(macros/s/.../exec)になっているか。\n2. GASのデプロイで、アクセスできるユーザーが「全員（Anyone）」になっているか。");
+          return;
+        }
         if (uploadResult.success && uploadResult.fileId) {
           fileId = uploadResult.fileId;
         } else {
