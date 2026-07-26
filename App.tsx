@@ -178,7 +178,7 @@ function App() {
     }
   };
 
-  // 一期読み込み時に IndexedDB から PDF を復元
+  // 初期読み込み時に IndexedDB から PDF を復元
   useEffect(() => {
     restorePdfFromIndexedDB().then(file => {
       if (file) {
@@ -727,7 +727,7 @@ function App() {
       ownerEmail: userEmail
     };
     const encodedData = encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(docData)))));
-    const completedLink = `${window.location.origin}${getBasePath()}/completed?token=${doc.signToken}${gasParamStr}${fileIdParamStr}&data=${encodedData}`;
+    const completedLink = `${window.location.origin}${getBasePath()}/completed?token=${doc.signToken}${doc.fileId ? gasParamStr + fileIdParamStr : ''}&data=${encodedData}`;
 
     // 新しいタブでダウンロード用の完了画面を即座に開く ★100%確実に動作する最強方式
     window.open(completedLink, '_blank');
