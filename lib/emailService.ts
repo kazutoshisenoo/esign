@@ -230,7 +230,7 @@ export async function sendFinalCompletedEmail(
   return sendViaResend(targetEmail, `【締結完了】「${docTitle}」の署名手続きが完了しました`, emailHtml, apiKey);
 }
 
-// GAS経由でPDFファイルをアップロードし、Googleドライブの fileId を取得する関数 ★追加
+// GAS経由でPDFファイルをアップロードし、Googleドライブの fileId を取得する関数 ★追加（CORSプリフライト回避版）
 export async function uploadPdfToGas(file: File, gasUrl: string): Promise<string | null> {
   try {
     const reader = new FileReader();
@@ -246,16 +246,18 @@ export async function uploadPdfToGas(file: File, gasUrl: string): Promise<string
     reader.readAsDataURL(file);
     const pdfBase64 = await base64Promise;
 
+    // CORSのプリフライト(OPTIONS)チェックを100%回避するため、URLSearchParamsを使用 ★
+    const params = new URLSearchParams();
+    params.append('action', 'uploadPdf');
+    params.append('pdfBase64', pdfBase64);
+    params.append('fileName', file.name);
+
     const response = await fetch(gasUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/x-www-form-urlencoded'
       },
-      body: JSON.stringify({
-        action: 'uploadPdf',
-        pdfBase64: pdfBase64,
-        fileName: file.name
-      })
+      body: params.toString()
     });
 
     const data = await response.json();
