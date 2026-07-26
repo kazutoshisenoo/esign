@@ -439,7 +439,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     key={doc.id} 
                     hoverEffect 
                     className="cursor-pointer border-white/5" 
-                    onClick={() => onSelectDocument(doc.id, doc.status === 'sent')}
+                    onClick={() => onSelectDocument(doc.id, false)}
                   >
                     <CardContent className="p-5 flex flex-col gap-3">
                       
