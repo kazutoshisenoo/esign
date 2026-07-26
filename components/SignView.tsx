@@ -565,30 +565,31 @@ export const SignView: React.FC<SignViewProps> = ({
                                 const nextVal = field.value === 'true' ? 'false' : 'true';
                                 setFields(fields.map(f => f.id === field.id ? { ...f, value: nextVal } : f));
                               } else if (field.type === 'signature') {
-                                // 自分で署名用の名前を入力・編集可能に変更 ★修正
-                                const defaultName = currentSigner?.name || '';
-                                const userVal = window.prompt('署名するお名前を入力してください（この名前が筆記体で印影になります）：', field.value?.startsWith('typed:') ? field.value.split(':')[1] : defaultName);
-                                if (userVal) {
-                                  const signValue = `typed:${userVal}:font-signature-1`;
-                                  setFields(fields.map(f => f.id === field.id ? { ...f, value: signValue } : f));
-                                }
+                                // スマホのpromptブロックバグを回避するため、ワンタップで即時名前を自動挿入！ ★修正
+                                const defaultName = currentSigner?.name || '署名';
+                                const signValue = `typed:${defaultName}:font-signature-1`;
+                                setFields(fields.map(f => f.id === field.id ? { ...f, value: signValue } : f));
                               } else if (field.type === 'name') {
-                                // 自分で氏名を入力・変更可能に変更 ★修正
-                                const userVal = window.prompt('氏名を入力してください：', field.value || currentSigner?.name || '');
-                                if (userVal !== null) {
-                                  setFields(fields.map(f => f.id === field.id ? { ...f, value: userVal } : f));
-                                }
+                                // 氏名をワンタップで即時自動挿入！ ★修正
+                                const defaultName = currentSigner?.name || '';
+                                setFields(fields.map(f => f.id === field.id ? { ...f, value: defaultName } : f));
                               } else if (field.type === 'date') {
-                                // 自分で日付を入力・変更可能に変更 ★修正
-                                const todayStr = new Date().toISOString().split('T')[0];
-                                const userVal = window.prompt('日付を入力してください：', field.value || todayStr);
-                                if (userVal !== null) {
-                                  setFields(fields.map(f => f.id === field.id ? { ...f, value: userVal } : f));
-                                }
+                                // 今日の日付をワンタップで即時自動挿入！ ★修正
+                                const todayStr = new Date().toLocaleDateString('ja-JP', {
+                                  year: 'numeric',
+                                  month: '2-digit',
+                                  day: '2-digit'
+                                }).replace(/\//g, '-'); // YYYY-MM-DD 形式
+                                setFields(fields.map(f => f.id === field.id ? { ...f, value: todayStr } : f));
                               } else {
-                                // その他はブラウザ標準プロンプトで最小限の入力 ★修正
+                                // 会社名やテキストフィールドはフォールバックでprompt（スマホで動かない場合は空文字ガード）
                                 const label = field.type === 'company' ? '会社名' : 'テキスト';
-                                const userVal = window.prompt(`${label}を入力してください：`, field.value || '');
+                                const defaultVal = field.type === 'company' ? '取引先企業' : '記入データ';
+                                let userVal = window.prompt(`${label}を入力してください：`, field.value || defaultVal);
+                                // もしモバイルでpromptがブロックされてnullになった場合はデフォルト値をセット
+                                if (userVal === null && !field.value) {
+                                  userVal = defaultVal;
+                                }
                                 if (userVal !== null) {
                                   setFields(fields.map(f => f.id === field.id ? { ...f, value: userVal } : f));
                                 }
