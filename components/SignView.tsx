@@ -135,7 +135,7 @@ export const SignView: React.FC<SignViewProps> = ({
     fileReader.readAsArrayBuffer(originalPdfFile);
   }, [isAuthenticated, originalPdfFile]);
 
-  // メインのPDFキャンバスのレンダリング
+  // メイン of PDFキャンバスのレンダリング ★Retina高画質対応（解像度2.5倍）
   const renderMainPage = async (page: pdfjsLib.PDFPageProxy, pageNum: number) => {
     const pageContainer = pageRefs.current[pageNum];
     if (!pageContainer) return;
@@ -143,7 +143,10 @@ export const SignView: React.FC<SignViewProps> = ({
     const containerWidth = pageContainer.clientWidth || 600;
     const initialViewport = page.getViewport({ scale: 1.0 });
     const scale = containerWidth / initialViewport.width;
-    const viewport = page.getViewport({ scale });
+    
+    // スマホ・PC高解像度ディスプレイでクッキリ読めるように2.5倍で描画
+    const outputScale = 2.5;
+    const viewport = page.getViewport({ scale: scale * outputScale });
 
     const oldCanvas = pageContainer.querySelector('canvas');
     if (oldCanvas) oldCanvas.remove();
@@ -151,6 +154,9 @@ export const SignView: React.FC<SignViewProps> = ({
     const canvas = document.createElement('canvas');
     canvas.width = viewport.width;
     canvas.height = viewport.height;
+    // CSSで元のコンテナ幅に合わせて表示
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
     canvas.className = 'shadow-md border border-white/5 rounded-lg';
     pageContainer.insertBefore(canvas, pageContainer.firstChild);
 
@@ -337,6 +343,40 @@ export const SignView: React.FC<SignViewProps> = ({
       console.error('Error completing signature process:', error);
       alert('PDFの合成および保存処理に失敗しました。');
       setIsCompleting(false);
+    }
+  };
+
+  const handleFieldClick = (field: Field) => {
+    const isMyField = field.signerId === activeSignerId;
+    if (!isMyField) return;
+
+    if (field.type === 'checkbox') {
+      const nextVal = field.value === 'true' ? 'false' : 'true';
+      setFields(fields.map(f => f.id === field.id ? { ...f, value: nextVal } : f));
+    } else if (field.type === 'signature') {
+      const defaultName = currentSigner?.name || '署名';
+      const signValue = `typed:${defaultName}:font-signature-1`;
+      setFields(fields.map(f => f.id === field.id ? { ...f, value: signValue } : f));
+    } else if (field.type === 'name') {
+      const defaultName = currentSigner?.name || '';
+      setFields(fields.map(f => f.id === field.id ? { ...f, value: defaultName } : f));
+    } else if (field.type === 'date') {
+      const todayStr = new Date().toLocaleDateString('ja-JP', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).replace(/\//g, '-');
+      setFields(fields.map(f => f.id === field.id ? { ...f, value: todayStr } : f));
+    } else {
+      const label = field.type === 'company' ? '会社名' : 'テキスト';
+      const defaultVal = field.type === 'company' ? '取引先企業' : '記入データ';
+      let userVal = window.prompt(`${label}を入力してください：`, field.value || defaultVal);
+      if (userVal === null && !field.value) {
+        userVal = defaultVal;
+      }
+      if (userVal !== null) {
+        setFields(fields.map(f => f.id === field.id ? { ...f, value: userVal } : f));
+      }
     }
   };
 
@@ -558,43 +598,11 @@ export const SignView: React.FC<SignViewProps> = ({
                         return (
                           <div
                             key={field.id}
-                            onClick={() => {
-                              if (!isMyField) return; 
-                              
-                              if (field.type === 'checkbox') {
-                                const nextVal = field.value === 'true' ? 'false' : 'true';
-                                setFields(fields.map(f => f.id === field.id ? { ...f, value: nextVal } : f));
-                              } else if (field.type === 'signature') {
-                                // スマホのpromptブロックバグを回避するため、ワンタップで即時名前を自動挿入！ ★修正
-                                const defaultName = currentSigner?.name || '署名';
-                                const signValue = `typed:${defaultName}:font-signature-1`;
-                                setFields(fields.map(f => f.id === field.id ? { ...f, value: signValue } : f));
-                              } else if (field.type === 'name') {
-                                // 氏名をワンタップで即時自動挿入！ ★修正
-                                const defaultName = currentSigner?.name || '';
-                                setFields(fields.map(f => f.id === field.id ? { ...f, value: defaultName } : f));
-                              } else if (field.type === 'date') {
-                                // 今日の日付をワンタップで即時自動挿入！ ★修正
-                                const todayStr = new Date().toLocaleDateString('ja-JP', {
-                                  year: 'numeric',
-                                  month: '2-digit',
-                                  day: '2-digit'
-                                }).replace(/\//g, '-'); // YYYY-MM-DD 形式
-                                setFields(fields.map(f => f.id === field.id ? { ...f, value: todayStr } : f));
-                              } else {
-                                // 会社名やテキストフィールドはフォールバックでprompt（スマホで動かない場合は空文字ガード）
-                                const label = field.type === 'company' ? '会社名' : 'テキスト';
-                                const defaultVal = field.type === 'company' ? '取引先企業' : '記入データ';
-                                let userVal = window.prompt(`${label}を入力してください：`, field.value || defaultVal);
-                                // もしモバイルでpromptがブロックされてnullになった場合はデフォルト値をセット
-                                if (userVal === null && !field.value) {
-                                  userVal = defaultVal;
-                                }
-                                if (userVal !== null) {
-                                  setFields(fields.map(f => f.id === field.id ? { ...f, value: userVal } : f));
-                                }
-                              }
-                            }}
+                             onClick={() => handleFieldClick(field)}
+                             onTouchStart={(e) => {
+                               e.preventDefault();
+                               handleFieldClick(field);
+                             }}
                             style={{
                               left: `${field.x}%`,
                               top: `${field.y}%`,
