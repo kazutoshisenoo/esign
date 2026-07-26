@@ -543,18 +543,19 @@ function App() {
 
     const fileIdParamStr = fileId ? `&fileId=${fileId}` : '';
 
-    signersWithOtp.forEach((signer) => {
-      // 署名URLの末尾に &gas=xxxx と &fileId=xxxx を付与して送信者のGAS設定を引き継がせる ★修正
-      const signLink = `${window.location.origin}${getBasePath()}/sign/${token}?signer=${signer.id}${gasParamStr}${fileIdParamStr}`;
-      sendSignRequestEmail(signer.email, signer.name, data.title, signLink)
+    // 直列ワークフロー：最初の未署名者（通常は署名者1）にのみ最初の依頼メールを送信 ★修正
+    const firstPendingSigner = signersWithOtp[0];
+    if (firstPendingSigner) {
+      const signLink = `${window.location.origin}${getBasePath()}/sign/${token}?signer=${firstPendingSigner.id}${gasParamStr}${fileIdParamStr}`;
+      sendSignRequestEmail(firstPendingSigner.email, firstPendingSigner.name, data.title, signLink)
         .then(result => {
           if (!result.success) {
-            console.error(`Failed to send request email to ${signer.email}:`, result.error);
+            console.error(`Failed to send request email to ${firstPendingSigner.email}:`, result.error);
           } else {
-            console.log(`Successfully sent sign request email to ${signer.email}`);
+            console.log(`Successfully sent sign request email to ${firstPendingSigner.email}`);
           }
         });
-    });
+    }
 
     const newDoc: DocumentItem = {
       id: currentDocumentId || `doc-${Date.now()}`,
@@ -636,7 +637,8 @@ function App() {
       const gasParamStr = encodedGas ? `&gas=${encodedGas}` : '';
       
       const targetCcEmails = currentDoc?.ccEmails || ccEmails;
-      const fileIdParamStr = activeFileId ? `&fileId=${activeFileId}` : '';
+      const fileId = currentDoc?.fileId || '';
+      const fileIdParamStr = fileId ? `&fileId=${fileId}` : '';
 
       // 署名フィールドと署名者情報をBase64化してパラメータに付与する ★超重要（他者PCでのPDFの復元用）
       const docData = {
@@ -681,6 +683,23 @@ function App() {
     const nextUnsigned = updatedSigners.find(s => s.status === 'pending');
     if (nextUnsigned) {
       setActiveSignerId(nextUnsigned.id);
+      
+      // 直列フロー：次の署名者に、最新のPDF（activeFileId）を埋め込んだ署名リンクを送る ★追加
+      const currentGasUrlVal = getGasUrl();
+      const encodedGasVal = currentGasUrlVal ? encodeURIComponent(btoa(unescape(encodeURIComponent(currentGasUrlVal)))) : '';
+      const gasParamStrVal = encodedGasVal ? `&gas=${encodedGasVal}` : '';
+      const fileIdParamStrVal = activeFileId ? `&fileId=${activeFileId}` : '';
+      const signLink = `${window.location.origin}${getBasePath()}/sign/${signToken}?signer=${nextUnsigned.id}${gasParamStrVal}${fileIdParamStrVal}`;
+      
+      console.log(`Sending next sign request to ${nextUnsigned.name} with updated fileId: ${activeFileId}`);
+      sendSignRequestEmail(nextUnsigned.email, nextUnsigned.name, pdfTitle, signLink)
+        .then(result => {
+          if (!result.success) {
+            console.error(`Failed to send next sign request email to ${nextUnsigned.email}:`, result.error);
+          } else {
+            console.log(`Successfully sent next sign request email to ${nextUnsigned.email}`);
+          }
+        });
     }
     
     const currentGasUrlVal = getGasUrl();
@@ -711,7 +730,7 @@ function App() {
     setGasUrlState(gasUrlString);
   };
 
-  // ダッシュボードから署名済みPDFを直接合成・ダウンロードする関数 ★修正（メールリンクと同様の遷移方式を採用）
+  // 各種署名済みPDFを直接合成・ダウンロードする関数 ★修正（メールリンクと同様の遷移方式を採用）
   const handleDownloadPdf = async (doc: DocumentItem) => {
     const currentGasUrl = getGasUrl();
     const encodedGas = currentGasUrl ? encodeURIComponent(btoa(unescape(encodeURIComponent(currentGasUrl)))) : '';
