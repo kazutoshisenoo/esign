@@ -178,7 +178,7 @@ function App() {
     }
   };
 
-  // 初期読み込み時に IndexedDB から PDF を復元
+  // 一期読み込み時に IndexedDB から PDF を復元
   useEffect(() => {
     restorePdfFromIndexedDB().then(file => {
       if (file) {
@@ -226,17 +226,19 @@ function App() {
   useEffect(() => {
     const handleUrlRouting = async () => {
       let path = window.location.pathname;
-      let searchStr = window.location.search;
+      let searchStr = window.location.search || '';
 
       if (window.location.hash) {
         const hashPart = window.location.hash.substring(1);
         if (hashPart.includes('?')) {
           const [hashPath, hashQuery] = hashPart.split('?');
           path = hashPath;
-          searchStr = '?' + hashQuery;
+          // メインのクエリとハッシュのクエリをマージする
+          searchStr = searchStr 
+            ? `${searchStr}&${hashQuery}` 
+            : `?${hashQuery}`;
         } else {
           path = hashPart;
-          searchStr = '';
         }
       }
 
