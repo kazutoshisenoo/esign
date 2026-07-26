@@ -523,9 +523,15 @@ function App() {
         const uploadedId = await uploadPdfToGas(pdfFile, currentGasUrl);
         if (uploadedId) {
           fileId = uploadedId;
+        } else {
+          // アップロード失敗時、送信処理を中断してアラートを表示 ★追加
+          alert("【送信エラー】GoogleドライブへのPDF自動保存に失敗しました。\n\n確認項目：\n1. 右上の設定(⚙️)の「Google Apps ScriptのURL」が、編集画面のURL(projects/...)ではなく、デプロイからコピーした「ウェブアプリのURL」になっているか。\n2. GASのデプロイで、アクセスできるユーザーが「全員（Anyone）」になっているか。\n\n上記を確認して、もう一度お試しください。");
+          return;
         }
       } catch (e) {
         console.error('Failed to upload PDF during handleSendRequest:', e);
+        alert("【通信エラー】Google Apps Scriptへの送信に失敗しました。\n通信エラー詳細: " + String(e));
+        return;
       }
     }
 
