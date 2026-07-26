@@ -193,7 +193,7 @@ export async function sendFinalCompletedEmail(
       <p style="font-size: 14px; color: #4b5563; line-height: 1.5;">
         ${targetName} 様<br /><br />
         電子署名サービス「AuraSign」をご利用いただきありがとうございます。<br /><br />
-        関係者全員 of 署名手続きが完了し、ドキュメント <strong>「${docTitle}」</strong> の合意が締結されましたので、最終版データ（PDF）を共有いたします。
+        関係者全員の署名手続きが完了し、ドキュメント <strong>「${docTitle}」</strong> の合意が締結されましたので、最終版データ（PDF）を共有いたします。
       </p>
       
       <div style="margin: 24px 0; text-align: center;">
@@ -230,8 +230,8 @@ export async function sendFinalCompletedEmail(
   return sendViaResend(targetEmail, `【締結完了】「${docTitle}」の署名手続きが完了しました`, emailHtml, apiKey);
 }
 
-// GAS経由でPDFファイルをアップロードし、Googleドライブの fileId を取得する関数 ★追加（CORSプリフライト回避版）
-export async function uploadPdfToGas(file: File, gasUrl: string): Promise<string | null> {
+// GAS経由でPDFファイルをアップロードし、Googleドライブの fileId を取得する関数 ★追加（CORSプリフライト回避版・詳細エラー返却仕様）
+export async function uploadPdfToGas(file: File, gasUrl: string): Promise<{ success: boolean; fileId?: string; error?: string }> {
   try {
     const reader = new FileReader();
     const base64Promise = new Promise<string>((resolve, reject) => {
@@ -263,14 +263,13 @@ export async function uploadPdfToGas(file: File, gasUrl: string): Promise<string
     const data = await response.json();
     if (data && data.success && data.fileId) {
       console.log('PDF uploaded to Google Drive successfully. File ID:', data.fileId);
-      return data.fileId;
+      return { success: true, fileId: data.fileId };
     } else {
-      console.error('Failed to upload PDF to GAS:', data.error || 'Unknown error');
-      return null;
+      return { success: false, error: data.error || '原因不明のエラーがGASから返されました。' };
     }
-  } catch (err) {
+  } catch (err: any) {
     console.error('Failed to upload PDF to GAS:', err);
-    return null;
+    return { success: false, error: err.message || 'GASとの通信に失敗しました。CORS制限またはURLが無効（404）です。' };
   }
 }
 
