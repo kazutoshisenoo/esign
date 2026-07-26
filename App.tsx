@@ -10,7 +10,9 @@ import {
   getEmailProvider, setEmailProvider, 
   getGasUrl, setGasUrl,
   sendSignRequestEmail,
-  sendFinalCompletedEmail
+  sendFinalCompletedEmail,
+  uploadPdfToGas,
+  downloadPdfFromGas
 } from './lib/emailService';
 
 type ViewState = 'dashboard' | 'editor' | 'sent' | 'sign' | 'completed';
@@ -47,6 +49,7 @@ interface DocumentItem {
   fields: Field[];
   signToken: string;
   signedPdfBlob?: Blob;
+  fileId?: string; // Googleドライブ上のファイルID ★追加
 }
 
 // ★ IndexedDBによるPDFの完全かつ壊れないバイナリ保存・復元処理 ★追加
@@ -242,17 +245,22 @@ function App() {
 
       // 送信元の GAS ウェブアプリURLを引き継ぐ ★追加
       const gasParam = searchParams.get('gas');
+      let activeGasUrl = getGasUrl();
       if (gasParam) {
         try {
           const decodedGasUrl = decodeURIComponent(escape(atob(gasParam)));
           if (decodedGasUrl && localStorage.getItem('aurasign_gas_url') !== decodedGasUrl) {
             localStorage.setItem('aurasign_gas_url', decodedGasUrl);
             localStorage.setItem('aurasign_email_provider', 'gmail_gas'); // 自動でGAS送信モードにする
+            activeGasUrl = decodedGasUrl;
           }
         } catch (e) {
           console.error('Failed to auto-sync gas URL:', e);
         }
       }
+
+      // Googleドライブからのファイル取得用ID ★追加
+      const fileIdParam = searchParams.get('fileId');
 
       // 完了画面へのルーティング処理 ★修正（URLパラメータからのデータ復旧に対応）
       if (path.includes('/completed')) {
@@ -261,10 +269,21 @@ function App() {
         
         const foundDoc = documents.find(d => d.signToken === token);
         const docId = foundDoc ? foundDoc.id : '';
+        const fileId = fileIdParam || foundDoc?.fileId || '';
+
         let file = await restorePdfFromIndexedDB(docId);
         if (!file) {
           file = await restorePdfFromIndexedDB(); // 後方互換性フォールバック
         }
+
+        // スマホなどで IndexedDB にファイルが無い場合、Google ドライブから取得 ★追加
+        if (!file && fileId && activeGasUrl) {
+          file = await downloadPdfFromGas(fileId, activeGasUrl);
+          if (file) {
+            await savePdfToIndexedDB(file, docId);
+          }
+        }
+
         if (!file) {
           file = await generateDemoPdf();
         }
@@ -312,10 +331,21 @@ function App() {
 
         const foundDoc = documents.find(d => d.signToken === token);
         const docId = foundDoc ? foundDoc.id : '';
+        const fileId = fileIdParam || foundDoc?.fileId || '';
+
         let file = await restorePdfFromIndexedDB(docId);
         if (!file) {
           file = await restorePdfFromIndexedDB(); // 後方互換性フォールバック
         }
+
+        // スマホなどで IndexedDB にファイルが無い場合、Google ドライブから取得 ★追加
+        if (!file && fileId && activeGasUrl) {
+          file = await downloadPdfFromGas(fileId, activeGasUrl);
+          if (file) {
+            await savePdfToIndexedDB(file, docId);
+          }
+        }
+
         if (!file) {
           file = await generateDemoPdf();
         }
@@ -442,6 +472,7 @@ function App() {
         const currentGasUrl = getGasUrl();
         const encodedGas = currentGasUrl ? encodeURIComponent(btoa(unescape(encodeURIComponent(currentGasUrl)))) : '';
         const gasParamStr = encodedGas ? `&gas=${encodedGas}` : '';
+        const fileIdParamStr = doc.fileId ? `&fileId=${doc.fileId}` : '';
         
         const docData = {
           fields: doc.fields,
@@ -451,7 +482,7 @@ function App() {
           ownerEmail: userEmail
         };
         const encodedData = encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(docData)))));
-        const completedLink = `${window.location.origin}${getBasePath()}/completed?token=${doc.signToken}${gasParamStr}&data=${encodedData}`;
+        const completedLink = `${window.location.origin}${getBasePath()}/completed?token=${doc.signToken}${gasParamStr}${fileIdParamStr}&data=${encodedData}`;
 
         window.open(completedLink, '_blank');
         return;
@@ -467,7 +498,7 @@ function App() {
     }
   };
 
-  const handleSendRequest = (data: {
+  const handleSendRequest = async (data: {
     title: string;
     signers: Signer[];
     ccEmails: string[];
@@ -484,9 +515,25 @@ function App() {
     const encodedGas = currentGasUrl ? encodeURIComponent(btoa(unescape(encodeURIComponent(currentGasUrl)))) : '';
     const gasParamStr = encodedGas ? `&gas=${encodedGas}` : '';
 
+    // 送信時に本物PDFをGoogleドライブへ自動アップロードしてfileIdを取得する ★追加
+    let fileId = '';
+    if (pdfFile && currentGasUrl && getEmailProvider() === 'gmail_gas') {
+      try {
+        console.log('Uploading PDF to Google Drive via GAS...');
+        const uploadedId = await uploadPdfToGas(pdfFile, currentGasUrl);
+        if (uploadedId) {
+          fileId = uploadedId;
+        }
+      } catch (e) {
+        console.error('Failed to upload PDF during handleSendRequest:', e);
+      }
+    }
+
+    const fileIdParamStr = fileId ? `&fileId=${fileId}` : '';
+
     signersWithOtp.forEach((signer) => {
-      // 署名URLの末尾に &gas=xxxx を付与して送信者のGAS設定を引き継がせる ★修正
-      const signLink = `${window.location.origin}${getBasePath()}/sign/${token}?signer=${signer.id}${gasParamStr}`;
+      // 署名URLの末尾に &gas=xxxx と &fileId=xxxx を付与して送信者のGAS設定を引き継がせる ★修正
+      const signLink = `${window.location.origin}${getBasePath()}/sign/${token}?signer=${signer.id}${gasParamStr}${fileIdParamStr}`;
       sendSignRequestEmail(signer.email, signer.name, data.title, signLink)
         .then(result => {
           if (!result.success) {
@@ -506,7 +553,8 @@ function App() {
       signers: signersWithOtp,
       ccEmails: data.ccEmails,
       fields: data.fields,
-      signToken: token
+      signToken: token,
+      fileId: fileId || undefined // ★ ドキュメント履歴にも保存
     };
 
     setDocuments(prev => {
@@ -557,6 +605,8 @@ function App() {
       
       const currentDoc = documents.find(d => d.id === currentDocumentId);
       const targetCcEmails = currentDoc?.ccEmails || ccEmails;
+      const fileId = currentDoc?.fileId || '';
+      const fileIdParamStr = fileId ? `&fileId=${fileId}` : '';
 
       // 署名フィールドと署名者情報をBase64化してパラメータに付与する ★超重要（他者PCでのPDFの復元用）
       const docData = {
@@ -567,7 +617,7 @@ function App() {
         ownerEmail: userEmail
       };
       const encodedData = encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(docData)))));
-      const completedLink = `${window.location.origin}${getBasePath()}/completed?token=${signToken}${gasParamStr}&data=${encodedData}`;
+      const completedLink = `${window.location.origin}${getBasePath()}/completed?token=${signToken}${gasParamStr}${fileIdParamStr}&data=${encodedData}`;
       
       updatedSigners.forEach((s) => {
         sendFinalCompletedEmail(s.email, s.name, pdfTitle, completedLink);
@@ -602,10 +652,12 @@ function App() {
       setActiveSignerId(nextUnsigned.id);
     }
     
-    // 署名完了後にURLを書き換えて、リロード時に再度の署名（認証画面）に逆戻りするのを防止 ★修正
     const currentGasUrlVal = getGasUrl();
     const encodedGasVal = currentGasUrlVal ? encodeURIComponent(btoa(unescape(encodeURIComponent(currentGasUrlVal)))) : '';
     const gasParamStrVal = encodedGasVal ? `&gas=${encodedGasVal}` : '';
+    const currentDocForId = documents.find(d => d.id === currentDocumentId);
+    const finalFileId = currentDocForId?.fileId || '';
+    const fileIdParamStrVal = finalFileId ? `&fileId=${finalFileId}` : '';
     
     const finalDocData = {
       fields: updatedFields,
@@ -616,7 +668,7 @@ function App() {
     };
     const encodedDataVal = encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(finalDocData)))));
 
-    window.history.pushState({}, '', `${getBasePath()}/completed?token=${signToken}${gasParamStrVal}&data=${encodedDataVal}`);
+    window.history.pushState({}, '', `${getBasePath()}/completed?token=${signToken}${gasParamStrVal}${fileIdParamStrVal}&data=${encodedDataVal}`);
     setView('completed');
   };
 
@@ -635,6 +687,7 @@ function App() {
     const currentGasUrl = getGasUrl();
     const encodedGas = currentGasUrl ? encodeURIComponent(btoa(unescape(encodeURIComponent(currentGasUrl)))) : '';
     const gasParamStr = encodedGas ? `&gas=${encodedGas}` : '';
+    const fileIdParamStr = doc.fileId ? `&fileId=${doc.fileId}` : '';
     
     // 署名フィールドと署名者情報をBase64化してパラメータに付与する ★超重要（データパッキング）
     const docData = {
@@ -645,7 +698,7 @@ function App() {
       ownerEmail: userEmail
     };
     const encodedData = encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(docData)))));
-    const completedLink = `${window.location.origin}${getBasePath()}/completed?token=${doc.signToken}${gasParamStr}&data=${encodedData}`;
+    const completedLink = `${window.location.origin}${getBasePath()}/completed?token=${doc.signToken}${gasParamStr}${fileIdParamStr}&data=${encodedData}`;
 
     // 新しいタブでダウンロード用の完了画面を即座に開く ★100%確実に動作する最強方式
     window.open(completedLink, '_blank');
