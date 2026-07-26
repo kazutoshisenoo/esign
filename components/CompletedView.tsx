@@ -198,13 +198,22 @@ export const CompletedView: React.FC<CompletedViewProps> = ({
 
     // ダウンロード実行
     const url = URL.createObjectURL(blobToDownload);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `[署名済み]_${title}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    const isInApp = /Line|FBAN|FBAV|Instagram|Gmail/i.test(navigator.userAgent);
+
+    if (isMobile || isInApp) {
+      // スマホ・アプリ内ブラウザでは、別ウィンドウで直接PDFを表示し、共有メニュー等から保存させる
+      window.open(url, '_blank');
+    } else {
+      // PCでは通常どおりの自動ダウンロード保存
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `[署名済み]_${title}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
   };
 
   const isAllSigned = signers.every(s => s.status === 'signed');
@@ -226,7 +235,7 @@ export const CompletedView: React.FC<CompletedViewProps> = ({
             <h2 className="text-xl font-semibold text-white">署名手続きが完了しました</h2>
             <p className="text-xs text-[#86868b]">
               {isAllSigned 
-                ? '関係者全員の署名が完了し、最終版データ（ダウンロード用URL）をメールで送付しました。' 
+                ? '関係者全員 of の署名が完了し、最終版データ（ダウンロード用URL）をメールで送付しました。' 
                 : 'あなたの署名手続きが完了しました（他の署名者の完了を待っています）。'}
             </p>
           </div>
@@ -288,7 +297,7 @@ export const CompletedView: React.FC<CompletedViewProps> = ({
           </div>
 
           {/* Download Action Only */}
-          <div className="w-full flex mt-4">
+          <div className="w-full flex flex-col gap-3 mt-4">
             <button 
               onClick={downloadSignedPdf}
               className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-all duration-200 shadow-md active:scale-[0.98] border-0 cursor-pointer"
@@ -296,6 +305,10 @@ export const CompletedView: React.FC<CompletedViewProps> = ({
               <Download size={14} />
               署名済みPDFを保存
             </button>
+            <p className="text-[10px] text-[#86868b] leading-relaxed text-left bg-white/5 border border-white/5 p-3 rounded-lg">
+              📱 <strong>スマホをご利用の場合</strong><br />
+              ボタンを押すとPDFファイルが別ウィンドウで開きます。表示された画面から<strong>ブラウザの「共有」ボタン ➜「ファイルに保存」</strong>を選択して保存してください。
+            </p>
           </div>
 
         </CardContent>
