@@ -106,10 +106,8 @@ const restorePdfFromIndexedDB = async (docId?: string): Promise<File | null> => 
 
 const getBasePath = () => {
   const path = window.location.pathname;
-  if (path.startsWith('/esign')) {
-    return '/esign';
-  }
-  return '';
+  const repoPath = path.startsWith('/esign') ? '/esign' : '';
+  return repoPath + '/#';
 };
 
 function App() {
@@ -224,8 +222,22 @@ function App() {
   // URLによる簡易ルーティング処理 ★IndexedDBからのロードに対応
   useEffect(() => {
     const handleUrlRouting = async () => {
-      const path = window.location.pathname;
-      const searchParams = new URLSearchParams(window.location.search);
+      let path = window.location.pathname;
+      let searchStr = window.location.search;
+
+      if (window.location.hash) {
+        const hashPart = window.location.hash.substring(1);
+        if (hashPart.includes('?')) {
+          const [hashPath, hashQuery] = hashPart.split('?');
+          path = hashPath;
+          searchStr = '?' + hashQuery;
+        } else {
+          path = hashPart;
+          searchStr = '';
+        }
+      }
+
+      const searchParams = new URLSearchParams(searchStr);
       const signerIdParam = searchParams.get('signer');
 
       // 送信元の GAS ウェブアプリURLを引き継ぐ ★追加
@@ -373,7 +385,11 @@ function App() {
     handleUrlRouting();
     
     window.addEventListener('popstate', handleUrlRouting);
-    return () => window.removeEventListener('popstate', handleUrlRouting);
+    window.addEventListener('hashchange', handleUrlRouting);
+    return () => {
+      window.removeEventListener('popstate', handleUrlRouting);
+      window.removeEventListener('hashchange', handleUrlRouting);
+    };
   }, [documents]);
 
   const handleLogout = () => {
@@ -726,7 +742,7 @@ function App() {
           onSignatureCompleted={handleSignatureCompleted}
           onBack={() => {
             setView('dashboard');
-            window.history.pushState({}, '', '/');
+            window.history.pushState({}, '', getBasePath() + '/');
           }}
         />
       )}
