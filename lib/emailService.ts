@@ -117,7 +117,7 @@ export async function sendOtpEmail(
         <span style="font-family: monospace; font-size: 32px; font-weight: bold; letter-spacing: 4px; color: #0071e3;">${otp}</span>
       </div>
       <p style="font-size: 11px; color: #9ca3af; line-height: 1.4; margin-top: 24px; border-top: 1px solid #f3f4f6; padding-top: 16px;">
-        ※このメールは送信専用です。本メールに心当たりがない場合は破棄してください。
+        ※このメール is 送信専用です。本メールに心当たりがない場合は破棄してください。
       </p>
     </div>
   `;
@@ -228,4 +228,64 @@ export async function sendFinalCompletedEmail(
   const apiKey = getResendApiKey();
   if (!apiKey) return { success: false, error: 'ResendのAPIキーが設定されていません。' };
   return sendViaResend(targetEmail, `【締結完了】「${docTitle}」の署名手続きが完了しました`, emailHtml, apiKey);
+}
+
+// GAS経由でPDFファイルをアップロードし、Googleドライブの fileId を取得する関数 ★追加
+export async function uploadPdfToGas(file: File, gasUrl: string): Promise<string | null> {
+  try {
+    const reader = new FileReader();
+    const base64Promise = new Promise<string>((resolve, reject) => {
+      reader.onload = () => {
+        const result = reader.result as string;
+        const base64 = result.split(',')[1] || result;
+        resolve(base64);
+      };
+      reader.onerror = (error) => reject(error);
+    });
+    
+    reader.readAsDataURL(file);
+    const pdfBase64 = await base64Promise;
+
+    const response = await fetch(gasUrl, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'uploadPdf',
+        pdfBase64: pdfBase64,
+        fileName: file.name
+      })
+    });
+
+    const data = await response.json();
+    if (data && data.success && data.fileId) {
+      console.log('PDF uploaded to Google Drive successfully. File ID:', data.fileId);
+      return data.fileId;
+    } else {
+      console.error('Failed to upload PDF to GAS:', data.error || 'Unknown error');
+      return null;
+    }
+  } catch (err) {
+    console.error('Failed to upload PDF to GAS:', err);
+    return null;
+  }
+}
+
+// GAS経由でGoogleドライブからPDFファイルをダウンロードし、Fileオブジェクトに復元する関数 ★追加
+export async function downloadPdfFromGas(fileId: string, gasUrl: string): Promise<File | null> {
+  try {
+    const url = `${gasUrl}?action=getPdf&fileId=${fileId}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    if (data && data.success && data.pdfBase64) {
+      const pdfBytes = Uint8Array.from(atob(data.pdfBase64), c => c.charCodeAt(0));
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+      return new File([blob], data.fileName || 'document.pdf', { type: 'application/pdf' });
+    } else {
+      console.error('Failed to download PDF from GAS:', data.error || 'Unknown error');
+      return null;
+    }
+  } catch (err) {
+    console.error('Failed to download PDF from GAS:', err);
+    return null;
+  }
 }
