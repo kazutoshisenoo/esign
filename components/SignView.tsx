@@ -598,6 +598,75 @@ export const SignView: React.FC<SignViewProps> = ({
         </div>
       </header>
 
+      {/* モバイル最適化入力フォームパネル ★追加 */}
+      {!isLoadingPdf && (
+        <div className="bg-[#121214] border-b border-white/5 p-4 flex flex-col gap-3">
+          <div className="max-w-2xl mx-auto w-full text-left">
+            <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">署名手続きフォーム（スマホ対応・ズレ防止）</span>
+            <h2 className="text-xs text-[#a1a1aa] mt-0.5">以下の必要項目に入力してください。PDFの指定箇所へ自動的に配置されます。</h2>
+            
+            <div className="mt-3 flex flex-wrap gap-4 items-end">
+              {fields
+                .filter(f => f.signerId === activeSignerId)
+                .map(field => {
+                  const currentValue = field.value || '';
+                  const rawVal = currentValue.startsWith('typed:') 
+                    ? currentValue.split(':')[1] 
+                    : currentValue;
+                  
+                  return (
+                    <div key={field.id} className="flex-1 min-w-[150px] flex flex-col gap-1.5">
+                      <label className="text-[11px] text-[#86868b] font-medium flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                        {getFieldLabelName(field.type)}
+                      </label>
+                      {field.type === 'checkbox' ? (
+                        <label className="flex items-center gap-2 px-3 py-2 bg-[#1c1c1f] border border-white/10 rounded-lg cursor-pointer text-xs text-white select-none">
+                          <input
+                            type="checkbox"
+                            checked={field.value === 'true'}
+                            onChange={(e) => {
+                              const nextVal = e.target.checked ? 'true' : 'false';
+                              setFields(fields.map(f => f.id === field.id ? { ...f, value: nextVal } : f));
+                            }}
+                            className="rounded bg-[#09090b] border-white/10 text-blue-600 focus:ring-0 w-3.5 h-3.5"
+                          />
+                          チェックする
+                        </label>
+                      ) : (
+                        <input
+                          type="text"
+                          placeholder={`${getFieldLabelName(field.type)}を入力`}
+                          value={rawVal}
+                          onChange={(e) => {
+                            let val = e.target.value;
+                            const defaultNames = ['署名者 1', '署名者 2', '署名者1', '署名者2', '署名'];
+                            if (defaultNames.includes(val)) {
+                              val = '';
+                            }
+                            const finalVal = field.type === 'signature' && val ? `typed:${val}:font-signature-1` : val;
+                            setFields(fields.map(f => f.id === field.id ? { ...f, value: finalVal } : f));
+                          }}
+                          className="w-full px-3 py-2 rounded-lg bg-[#1c1c1f] border border-white/10 text-white placeholder-[#52525b] focus:outline-none focus:border-[#0071e3] transition-all text-xs font-medium"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+                
+              <Button 
+                variant="primary" 
+                onClick={handleCompleteSign} 
+                isLoading={isCompleting}
+                className="bg-blue-600 hover:bg-blue-500 text-xs px-5 h-9 font-semibold shrink-0"
+              >
+                署名を適用して完了
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Signing Area */}
       <div className="flex-1 flex overflow-hidden">
         
@@ -614,7 +683,7 @@ export const SignView: React.FC<SignViewProps> = ({
                 <Info size={16} className="flex-shrink-0 text-blue-400 mt-0.5" />
                 <div>
                   <p className="font-semibold">署名手順</p>
-                  <p className="mt-0.5">あなた専用のカラー枠をクリックすると、**ワンクリックで自動的にあなたの署名・氏名・日付が適用されます。** すべての項目を入力し終えたら、右上の「署名を完了」を押してください。</p>
+                  <p className="mt-0.5">画面上の「署名手続きフォーム」に入力するか、PDF上のあなた専用のカラー枠をタップして入力してください。すべての項目を入力し終えたら、「署名を適用して完了」を押してください。</p>
                 </div>
               </div>
 
@@ -631,6 +700,9 @@ export const SignView: React.FC<SignViewProps> = ({
                     {fields
                       .filter((f) => f.pageNumber === pageNum)
                       .map((field) => {
+                        // 既に値が書き込み保存されている他人のフィールドは、画面上の枠としては重ねて非表示にする ★修正
+                        if (field.value && field.signerId !== activeSignerId) return null;
+
                         const isFilled = !!field.value;
                         const isMyField = field.signerId === activeSignerId;
                         const colors = getFieldColorClasses(field.signerId, isMyField, isFilled);
