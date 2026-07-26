@@ -652,6 +652,10 @@ export const SignView: React.FC<SignViewProps> = ({
                           <div
                             key={field.id}
                             onClick={() => handleFieldClick(field)}
+                            onTouchEnd={(e) => {
+                              e.stopPropagation();
+                              handleFieldClick(field);
+                            }}
                             style={{
                               left: `${field.x}%`,
                               top: `${field.y}%`,
