@@ -3,7 +3,7 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches:
-      - main # mainブランチへのpushをトリガーにします
+      - main
 
 permissions:
   contents: read
@@ -27,12 +27,10 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          node-version: 22 # 推奨の最新Nodeバージョンに変更
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install # 特定のファイルが無くても確実に自動復元できるコマンドに変更 ★
         working-directory: frontend
 
       - name: Build
