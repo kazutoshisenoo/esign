@@ -49,10 +49,9 @@ interface DocumentItem {
   fields: Field[];
   signToken: string;
   signedPdfBlob?: Blob;
-  fileId?: string; // Googleドライブ上のファイルID ★追加
+  fileId?: string;
 }
 
-// ★ IndexedDBによるPDFの完全かつ壊れないバイナリ保存・復元処理 ★追加
 const getDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open('aurasign_pdf_db', 1);
@@ -117,7 +116,6 @@ function App() {
   const [view, setView] = useState<ViewState>('dashboard');
   const [userEmail] = useState<string>('owner@aura-sign.com');
   
-  // ドキュメント履歴ステート
   const [documents, setDocuments] = useState<DocumentItem[]>(() => {
     const savedDocs = localStorage.getItem('aurasign_saved_documents');
     if (savedDocs) {
@@ -144,7 +142,6 @@ function App() {
     ];
   });
 
-  // アプリ共通ステート
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [pdfTitle, setPdfTitle] = useState(() => localStorage.getItem('aurasign_saved_pdf_name') || '');
   const [signers, setSigners] = useState<Signer[]>([]);
@@ -155,12 +152,10 @@ function App() {
   const [signedPdfBlob, setSignedPdfBlob] = useState<Blob | null>(null);
   const [currentDocumentId, setCurrentDocumentId] = useState<string>(''); 
 
-  // 設定用ステート
   const [emailProvider, setProviderState] = useState<'resend' | 'gmail_gas'>(getEmailProvider());
   const [resendKey, setResendKeyState] = useState<string>(getResendApiKey());
   const [gasUrl, setGasUrlState] = useState<string>(getGasUrl());
 
-  // 管理者ログイン用パスコード認証ステート ★永続化（localStorageに変更）
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(() => {
     return localStorage.getItem('aurasign_admin_authenticated') === 'true';
   });
@@ -178,7 +173,6 @@ function App() {
     }
   };
 
-  // 初期読み込み時に IndexedDB から PDF を復元
   useEffect(() => {
     restorePdfFromIndexedDB().then(file => {
       if (file) {
@@ -187,12 +181,10 @@ function App() {
     });
   }, []);
 
-  // 履歴が更新されたらローカルストレージに保存
   useEffect(() => {
     localStorage.setItem('aurasign_saved_documents', JSON.stringify(documents));
   }, [documents]);
 
-  // デモ用の白紙PDFを動的に生成する関数
   const generateDemoPdf = async () => {
     try {
       const pdfDoc = await PDFDocument.create();
@@ -222,7 +214,6 @@ function App() {
     }
   };
 
-  // URLによる簡易ルーティング処理 ★IndexedDBからのロードに対応
   useEffect(() => {
     const handleUrlRouting = async () => {
       let path = window.location.pathname;
@@ -233,7 +224,6 @@ function App() {
         if (hashPart.includes('?')) {
           const [hashPath, hashQuery] = hashPart.split('?');
           path = hashPath;
-          // メインのクエリとハッシュのクエリをマージする
           searchStr = searchStr 
             ? `${searchStr}&${hashQuery}` 
             : `?${hashQuery}`;
@@ -245,7 +235,6 @@ function App() {
       const searchParams = new URLSearchParams(searchStr);
       const signerIdParam = searchParams.get('signer');
 
-      // 送信元の GAS ウェブアプリURLを引き継ぐ ★追加
       const gasParam = searchParams.get('gas');
       let activeGasUrl = getGasUrl();
       if (gasParam) {
@@ -253,7 +242,7 @@ function App() {
           const decodedGasUrl = decodeURIComponent(escape(atob(gasParam)));
           if (decodedGasUrl && localStorage.getItem('aurasign_gas_url') !== decodedGasUrl) {
             localStorage.setItem('aurasign_gas_url', decodedGasUrl);
-            localStorage.setItem('aurasign_email_provider', 'gmail_gas'); // 自動でGAS送信モードにする
+            localStorage.setItem('aurasign_email_provider', 'gmail_gas');
             activeGasUrl = decodedGasUrl;
           }
         } catch (e) {
@@ -261,10 +250,8 @@ function App() {
         }
       }
 
-      // Googleドライブからのファイル取得用ID ★追加
       const fileIdParam = searchParams.get('fileId');
 
-      // 完了画面へのルーティング処理 ★修正（URLパラメータからのデータ復旧に対応）
       if (path.includes('/completed')) {
         const token = searchParams.get('token') || '';
         const rawData = searchParams.get('data') || '';
@@ -275,10 +262,9 @@ function App() {
 
         let file = await restorePdfFromIndexedDB(docId);
         if (!file) {
-          file = await restorePdfFromIndexedDB(); // 後方互換性フォールバック
+          file = await restorePdfFromIndexedDB();
         }
 
-        // スマホなどで IndexedDB にファイルが無い場合、Google ドライブから取得 ★追加
         if (!file && fileId && activeGasUrl) {
           file = await downloadPdfFromGas(fileId, activeGasUrl);
           if (file) {
@@ -290,7 +276,6 @@ function App() {
           file = await generateDemoPdf();
         }
 
-        // URLパラメータの data から署名者情報とフィールドデータを復元する ★超重要（別ブラウザ・他者アクセス対応）
         if (rawData) {
           try {
             const decodedJson = decodeURIComponent(escape(atob(rawData)));
@@ -318,7 +303,6 @@ function App() {
           return;
         }
         
-        // フォールバック
         if (file) setPdfFile(file);
         setView('completed');
         return;
@@ -338,10 +322,9 @@ function App() {
 
         let file = await restorePdfFromIndexedDB(docId);
         if (!file) {
-          file = await restorePdfFromIndexedDB(); // 後方互換性フォールバック
+          file = await restorePdfFromIndexedDB();
         }
 
-        // スマホなどで IndexedDB にファイルが無い場合、Google ドライブから取得 ★追加
         if (!file && fileId && activeGasUrl) {
           file = await downloadPdfFromGas(fileId, activeGasUrl);
           if (file) {
@@ -353,7 +336,6 @@ function App() {
           file = await generateDemoPdf();
         }
 
-        // URLパラメータの data から署名者情報とフィールドデータを復元する ★超重要（中間進捗の完全同期）
         if (rawData) {
           try {
             const decodedJson = decodeURIComponent(escape(atob(rawData)));
@@ -375,7 +357,6 @@ function App() {
           }
         }
 
-        // 既存の foundDoc を使用
         if (foundDoc) {
           setPdfTitle(foundDoc.title);
           setSigners(foundDoc.signers);
@@ -462,7 +443,6 @@ function App() {
     setCcEmails([]);
     setCurrentDocumentId(docId);
     
-    // IndexedDB に本物PDFファイルを安全にバイナリ保存（ドキュメント個別管理） ★修正
     savePdfToIndexedDB(file, docId);
     
     setView('editor');
@@ -477,7 +457,6 @@ function App() {
     const doc = documents.find(d => d.id === id);
     if (!doc) return;
 
-    // IndexedDB から docId に対応する元PDFの復元を試みる ★修正
     let file = await restorePdfFromIndexedDB(doc.id);
     if (!file || file.name !== doc.title) {
       file = await generateDemoPdf();
@@ -540,21 +519,19 @@ function App() {
     const encodedGas = currentGasUrl ? encodeURIComponent(btoa(unescape(encodeURIComponent(currentGasUrl)))) : '';
     const gasParamStr = encodedGas ? `&gas=${encodedGas}` : '';
 
-    // 送信時に本物PDFをGoogleドライブへ自動アップロードしてfileIdを取得する ★追加
     let fileId = '';
     if (pdfFile && currentGasUrl && getEmailProvider() === 'gmail_gas') {
       try {
         console.log('Uploading PDF to Google Drive via GAS...');
         const uploadResult = await uploadPdfToGas(pdfFile, currentGasUrl) as any;
         if (!uploadResult) {
-          alert("【送信エラー】GoogleドライブへのPDF自動保存に失敗しました。\n\nエラー内容（原因）：古いプログラムがブラウザに残っているか、GASのURLにアクセスできません。\n\n確認項目：\n1. 右上の設定(⚙️)の「Google Apps ScriptのURL」が、編集画面のURLではなく、デプロイからコピーした「ウェブアプリのURL」(macros/s/.../exec)になっているか。\n2. GASのデプロイで、アクセスできるユーザーが「全員（Anyone）」になっているか。");
+          alert("【送信エラー】GoogleドライブへのPDF自動保存に失敗しました。");
           return;
         }
         if (uploadResult.success && uploadResult.fileId) {
           fileId = uploadResult.fileId;
         } else {
-          // アップロード失敗時、詳細なエラーを表示 ★修正
-          alert(`【送信エラー】GoogleドライブへのPDF自動保存に失敗しました。\n\nエラー内容（原因）：\n${uploadResult.error || '不明なエラー'}\n\n確認項目：\n1. 右上の設定(⚙️)の「Google Apps ScriptのURL」が、編集画面のURL(projects/...)ではなく、デプロイからコピーした「ウェブアプリのURL」になっているか。\n2. GASのデプロイで、アクセスできるユーザーが「全員（Anyone）」になっているか。\n\n上記を確認して、もう一度お試しください。`);
+          alert(`【送信エラー】GoogleドライブへのPDF自動保存に失敗しました。\nエラー内容：${uploadResult.error || '不明のエラー'}`);
           return;
         }
       } catch (e) {
@@ -566,7 +543,6 @@ function App() {
 
     const fileIdParamStr = fileId ? `&fileId=${fileId}` : '';
 
-    // 直列ワークフロー：最初の未署名者（通常は署名者1）にのみ最初の依頼メールを送信 ★修正
     const firstPendingSigner = signersWithOtp[0];
     if (firstPendingSigner) {
       const signLink = `${window.location.origin}${getBasePath()}/sign/${token}?signer=${firstPendingSigner.id}${gasParamStr}${fileIdParamStr}`;
@@ -590,7 +566,7 @@ function App() {
       ccEmails: data.ccEmails,
       fields: data.fields,
       signToken: token,
-      fileId: fileId || undefined // ★ ドキュメント履歴にも保存
+      fileId: fileId || undefined
     };
 
     setDocuments(prev => {
@@ -617,17 +593,15 @@ function App() {
     setSignedPdfBlob(blob);
     setFields(updatedFields);
 
-    // 最新の合成後PDFファイルを IndexedDB に上書き保存する！ ★超重要（Aの署名が入った最新版をBに引き継ぐ）
     const updatedFile = new File([blob], pdfTitle, { type: 'application/pdf' });
     try {
-      setPdfFile(updatedFile); // メモリ上の状態も更新
-      await savePdfToIndexedDB(updatedFile, currentDocumentId); // docIdを渡す ★修正
+      setPdfFile(updatedFile);
+      await savePdfToIndexedDB(updatedFile, currentDocumentId);
       console.log('Successfully saved middle signed PDF to IndexedDB.');
     } catch (err) {
       console.error('Failed to save middle signed PDF to IndexedDB:', err);
     }
 
-    // 中間署名完了時に合成後PDFをGAS経由でGoogleドライブへ再アップロードする！ ★追加
     let activeFileId = '';
     const currentDoc = documents.find(d => d.id === currentDocumentId);
     if (currentDoc) {
@@ -654,7 +628,6 @@ function App() {
     const isAllSigned = updatedSigners.every(s => s.status === 'signed');
     const nextStatus = isAllSigned ? 'completed' as const : 'sent' as const;
 
-    // 全員が署名を完了した場合、すべての署名者＋送信者＋妹尾様に最終版PDFの共有通知メールを送信
     if (isAllSigned) {
       const encodedGas = currentGasUrl ? encodeURIComponent(btoa(unescape(encodeURIComponent(currentGasUrl)))) : '';
       const gasParamStr = encodedGas ? `&gas=${encodedGas}` : '';
@@ -663,7 +636,6 @@ function App() {
       const fileId = currentDoc?.fileId || '';
       const fileIdParamStr = fileId ? `&fileId=${fileId}` : '';
 
-      // 署名フィールドと署名者情報をBase64化してパラメータに付与する ★超重要（他者PCでのPDFの復元用）
       const docData = {
         fields: updatedFields,
         signers: updatedSigners,
@@ -677,11 +649,8 @@ function App() {
       updatedSigners.forEach((s) => {
         sendFinalCompletedEmail(s.email, s.name, pdfTitle, completedLink);
       });
-      // 送信者自身にも共有
       sendFinalCompletedEmail(userEmail, '送信者 (AuraSignオーナー)', pdfTitle, completedLink);
-      // kazutoshi.senoo@gmail.com 宛てにも最終完了共有メールを送信
       sendFinalCompletedEmail('kazutoshi.senoo@gmail.com', '管理者 (妹尾 様)', pdfTitle, completedLink);
-      // 登録された共有者 (CC) 全員へ最終完了通知メールを送信 ★修正（メモリ揮発対策）
       if (targetCcEmails) {
         targetCcEmails.forEach((ccEmail) => {
           sendFinalCompletedEmail(ccEmail, '共有先 (CC)', pdfTitle, completedLink);
@@ -697,7 +666,7 @@ function App() {
           signers: updatedSigners,
           fields: updatedFields,
           signedPdfBlob: blob,
-          fileId: activeFileId || d.fileId // ★最新のfileIdを保存する
+          fileId: activeFileId || d.fileId
         };
       }
       return d;
@@ -756,14 +725,12 @@ function App() {
     setGasUrlState(gasUrlString);
   };
 
-  // 各種署名済みPDFを直接合成・ダウンロードする関数 ★修正（メールリンクと同様の遷移方式を採用）
   const handleDownloadPdf = async (doc: DocumentItem) => {
     const currentGasUrl = getGasUrl();
     const encodedGas = currentGasUrl ? encodeURIComponent(btoa(unescape(encodeURIComponent(currentGasUrl)))) : '';
     const gasParamStr = encodedGas ? `&gas=${encodedGas}` : '';
     const fileIdParamStr = doc.fileId ? `&fileId=${doc.fileId}` : '';
     
-    // 署名フィールドと署名者情報をBase64化してパラメータに付与する ★超重要（データパッキング）
     const docData = {
       fields: doc.fields,
       signers: doc.signers,
@@ -774,7 +741,6 @@ function App() {
     const encodedData = encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(docData)))));
     const completedLink = `${window.location.origin}${getBasePath()}/completed?token=${doc.signToken}${doc.fileId ? gasParamStr + fileIdParamStr : ''}&data=${encodedData}`;
 
-    // 新しいタブでダウンロード用の完了画面を即座に開く ★100%確実に動作する最強方式
     window.open(completedLink, '_blank');
   };
 
@@ -782,7 +748,6 @@ function App() {
     <>
       {view === 'dashboard' && (
         !isAdminAuthenticated ? (
-          // セキュアログインゲート（ダッシュボード保護） ★追加
           <div className="min-h-screen bg-[#09090b] text-white flex flex-col items-center justify-center p-4 select-none">
             <div className="w-full max-w-md bg-[#121214]/60 border border-white/5 p-8 rounded-2xl shadow-3xl backdrop-blur-md">
               <div className="flex flex-col items-center gap-3 mb-6">
