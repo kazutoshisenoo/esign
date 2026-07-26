@@ -452,7 +452,7 @@ function App() {
     const doc = documents.find(d => d.id === id);
     if (!doc) return;
 
-    // IndexedDB から docId に対応する元PDF of 復元を試みる ★修正
+    // IndexedDB から docId に対応する元PDFの復元を試みる ★修正
     let file = await restorePdfFromIndexedDB(doc.id);
     if (!file || file.name !== doc.title) {
       file = await generateDemoPdf();
@@ -592,13 +592,34 @@ function App() {
     setFields(updatedFields);
 
     // 最新の合成後PDFファイルを IndexedDB に上書き保存する！ ★超重要（Aの署名が入った最新版をBに引き継ぐ）
+    const updatedFile = new File([blob], pdfTitle, { type: 'application/pdf' });
     try {
-      const updatedFile = new File([blob], pdfTitle, { type: 'application/pdf' });
       setPdfFile(updatedFile); // メモリ上の状態も更新
       await savePdfToIndexedDB(updatedFile, currentDocumentId); // docIdを渡す ★修正
       console.log('Successfully saved middle signed PDF to IndexedDB.');
     } catch (err) {
       console.error('Failed to save middle signed PDF to IndexedDB:', err);
+    }
+
+    // 中間署名完了時に合成後PDFをGAS経由でGoogleドライブへ再アップロードする！ ★追加
+    let activeFileId = '';
+    const currentDoc = documents.find(d => d.id === currentDocumentId);
+    if (currentDoc) {
+      activeFileId = currentDoc.fileId || '';
+    }
+
+    const currentGasUrl = getGasUrl();
+    if (currentGasUrl && getEmailProvider() === 'gmail_gas') {
+      try {
+        console.log('Uploading updated signed PDF to Google Drive...');
+        const uploadResult = await uploadPdfToGas(updatedFile, currentGasUrl) as any;
+        if (uploadResult && uploadResult.success && uploadResult.fileId) {
+          activeFileId = uploadResult.fileId;
+          console.log('Updated PDF uploaded. New File ID:', activeFileId);
+        }
+      } catch (e) {
+        console.error('Failed to upload middle signed PDF:', e);
+      }
     }
 
     const updatedSigners = signers.map(s => s.id === signerId ? { ...s, status: 'signed' as const } : s);
@@ -609,14 +630,11 @@ function App() {
 
     // 全員が署名を完了した場合、すべての署名者＋送信者＋妹尾様に最終版PDFの共有通知メールを送信
     if (isAllSigned) {
-      const currentGasUrl = getGasUrl();
       const encodedGas = currentGasUrl ? encodeURIComponent(btoa(unescape(encodeURIComponent(currentGasUrl)))) : '';
       const gasParamStr = encodedGas ? `&gas=${encodedGas}` : '';
       
-      const currentDoc = documents.find(d => d.id === currentDocumentId);
       const targetCcEmails = currentDoc?.ccEmails || ccEmails;
-      const fileId = currentDoc?.fileId || '';
-      const fileIdParamStr = fileId ? `&fileId=${fileId}` : '';
+      const fileIdParamStr = activeFileId ? `&fileId=${activeFileId}` : '';
 
       // 署名フィールドと署名者情報をBase64化してパラメータに付与する ★超重要（他者PCでのPDFの復元用）
       const docData = {
@@ -651,7 +669,8 @@ function App() {
           status: nextStatus,
           signers: updatedSigners,
           fields: updatedFields,
-          signedPdfBlob: blob
+          signedPdfBlob: blob,
+          fileId: activeFileId || d.fileId // ★最新のfileIdを保存する
         };
       }
       return d;
@@ -665,9 +684,7 @@ function App() {
     const currentGasUrlVal = getGasUrl();
     const encodedGasVal = currentGasUrlVal ? encodeURIComponent(btoa(unescape(encodeURIComponent(currentGasUrlVal)))) : '';
     const gasParamStrVal = encodedGasVal ? `&gas=${encodedGasVal}` : '';
-    const currentDocForId = documents.find(d => d.id === currentDocumentId);
-    const finalFileId = currentDocForId?.fileId || '';
-    const fileIdParamStrVal = finalFileId ? `&fileId=${finalFileId}` : '';
+    const fileIdParamStrVal = activeFileId ? `&fileId=${activeFileId}` : '';
     
     const finalDocData = {
       fields: updatedFields,
