@@ -160,9 +160,9 @@ function App() {
   const [resendKey, setResendKeyState] = useState<string>(getResendApiKey());
   const [gasUrl, setGasUrlState] = useState<string>(getGasUrl());
 
-  // 管理者ログイン用パスコード認証ステート ★追加
+  // 管理者ログイン用パスコード認証ステート ★永続化（localStorageに変更）
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(() => {
-    return sessionStorage.getItem('aurasign_admin_authenticated') === 'true';
+    return localStorage.getItem('aurasign_admin_authenticated') === 'true';
   });
   const [passcodeInput, setPasscodeInput] = useState('');
   const [passcodeError, setPasscodeError] = useState('');
@@ -170,7 +170,7 @@ function App() {
   const handleAdminLogin = () => {
     const correctPasscode = localStorage.getItem('aurasign_admin_passcode') || 'aurasign2026';
     if (passcodeInput === correctPasscode) {
-      sessionStorage.setItem('aurasign_admin_authenticated', 'true');
+      localStorage.setItem('aurasign_admin_authenticated', 'true');
       setIsAdminAuthenticated(true);
       setPasscodeError('');
     } else {
@@ -423,7 +423,7 @@ function App() {
   }, [documents]);
 
   const handleLogout = () => {
-    sessionStorage.removeItem('aurasign_admin_authenticated');
+    localStorage.removeItem('aurasign_admin_authenticated');
     setIsAdminAuthenticated(false);
     setPasscodeInput('');
   };
@@ -520,12 +520,12 @@ function App() {
     if (pdfFile && currentGasUrl && getEmailProvider() === 'gmail_gas') {
       try {
         console.log('Uploading PDF to Google Drive via GAS...');
-        const uploadedId = await uploadPdfToGas(pdfFile, currentGasUrl);
-        if (uploadedId) {
-          fileId = uploadedId;
+        const uploadResult = await uploadPdfToGas(pdfFile, currentGasUrl);
+        if (uploadResult.success && uploadResult.fileId) {
+          fileId = uploadResult.fileId;
         } else {
-          // アップロード失敗時、送信処理を中断してアラートを表示 ★追加
-          alert("【送信エラー】GoogleドライブへのPDF自動保存に失敗しました。\n\n確認項目：\n1. 右上の設定(⚙️)の「Google Apps ScriptのURL」が、編集画面のURL(projects/...)ではなく、デプロイからコピーした「ウェブアプリのURL」になっているか。\n2. GASのデプロイで、アクセスできるユーザーが「全員（Anyone）」になっているか。\n\n上記を確認して、もう一度お試しください。");
+          // アップロード失敗時、詳細なエラーを表示 ★修正
+          alert(`【送信エラー】GoogleドライブへのPDF自動保存に失敗しました。\n\nエラー内容（原因）：\n${uploadResult.error || '不明なエラー'}\n\n確認項目：\n1. 右上の設定(⚙️)の「Google Apps ScriptのURL」が、編集画面のURL(projects/...)ではなく、デプロイからコピーした「ウェブアプリのURL」になっているか。\n2. GASのデプロイで、アクセスできるユーザーが「全員（Anyone）」になっているか。\n\n上記を確認して、もう一度お試しください。`);
           return;
         }
       } catch (e) {
