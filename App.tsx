@@ -104,6 +104,14 @@ const restorePdfFromIndexedDB = async (docId?: string): Promise<File | null> => 
   }
 };
 
+const getBasePath = () => {
+  const path = window.location.pathname;
+  if (path.startsWith('/esign')) {
+    return '/esign';
+  }
+  return '';
+};
+
 function App() {
   const [view, setView] = useState<ViewState>('dashboard');
   const [userEmail] = useState<string>('owner@aura-sign.com');
@@ -387,7 +395,7 @@ function App() {
     savePdfToIndexedDB(file, docId);
     
     setView('editor');
-    window.history.pushState({}, '', '/');
+    window.history.pushState({}, '', getBasePath() + '/');
   };
 
   const generateOtp = () => {
@@ -427,7 +435,7 @@ function App() {
           ownerEmail: userEmail
         };
         const encodedData = encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(docData)))));
-        const completedLink = `${window.location.origin}/completed?token=${doc.signToken}${gasParamStr}&data=${encodedData}`;
+        const completedLink = `${window.location.origin}${getBasePath()}/completed?token=${doc.signToken}${gasParamStr}&data=${encodedData}`;
 
         window.open(completedLink, '_blank');
         return;
@@ -462,7 +470,7 @@ function App() {
 
     signersWithOtp.forEach((signer) => {
       // 署名URLの末尾に &gas=xxxx を付与して送信者のGAS設定を引き継がせる ★修正
-      const signLink = `${window.location.origin}/sign/${token}?signer=${signer.id}${gasParamStr}`;
+      const signLink = `${window.location.origin}${getBasePath()}/sign/${token}?signer=${signer.id}${gasParamStr}`;
       sendSignRequestEmail(signer.email, signer.name, data.title, signLink)
         .then(result => {
           if (!result.success) {
@@ -543,7 +551,7 @@ function App() {
         ownerEmail: userEmail
       };
       const encodedData = encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(docData)))));
-      const completedLink = `${window.location.origin}/completed?token=${signToken}${gasParamStr}&data=${encodedData}`;
+      const completedLink = `${window.location.origin}${getBasePath()}/completed?token=${signToken}${gasParamStr}&data=${encodedData}`;
       
       updatedSigners.forEach((s) => {
         sendFinalCompletedEmail(s.email, s.name, pdfTitle, completedLink);
@@ -592,7 +600,7 @@ function App() {
     };
     const encodedDataVal = encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(finalDocData)))));
 
-    window.history.pushState({}, '', `/completed?token=${signToken}${gasParamStrVal}&data=${encodedDataVal}`);
+    window.history.pushState({}, '', `${getBasePath()}/completed?token=${signToken}${gasParamStrVal}&data=${encodedDataVal}`);
     setView('completed');
   };
 
@@ -621,7 +629,7 @@ function App() {
       ownerEmail: userEmail
     };
     const encodedData = encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(docData)))));
-    const completedLink = `${window.location.origin}/completed?token=${doc.signToken}${gasParamStr}&data=${encodedData}`;
+    const completedLink = `${window.location.origin}${getBasePath()}/completed?token=${doc.signToken}${gasParamStr}&data=${encodedData}`;
 
     // 新しいタブでダウンロード用の完了画面を即座に開く ★100%確実に動作する最強方式
     window.open(completedLink, '_blank');
