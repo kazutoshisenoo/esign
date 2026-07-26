@@ -53,7 +53,6 @@ export const SignView: React.FC<SignViewProps> = ({
 }) => {
   const currentSigner = signers.find(s => s.id === activeSignerId) || signers[0];
 
-  // 認証フロー (ワンタイムパスワード手続き不要のため最初からtrueに設定) ★修正
   const [isAuthenticated, setIsAuthenticated] = useState(true);
   const [authEmail, setAuthEmail] = useState('');
   const [otp, setOtp] = useState('');
@@ -61,7 +60,6 @@ export const SignView: React.FC<SignViewProps> = ({
   const [authError, setAuthError] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
 
-  // PDFレンダリング
   const [numPages, setNumPages] = useState<number>(0);
   const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const [isLoadingPdf, setIsLoadingPdf] = useState(true);
@@ -70,12 +68,10 @@ export const SignView: React.FC<SignViewProps> = ({
   const [isCompleting, setIsCompleting] = useState(false);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
 
-  // 入力モーダル用ステート ★追加
   const [activeInputField, setActiveInputField] = useState<Field | null>(null);
   const [modalInputValue, setModalInputValue] = useState('');
-  const [pdfAspectRatio, setPdfAspectRatio] = useState<number>(1.4142); // ★動的アスペクト比ステート追加
+  const [pdfAspectRatio, setPdfAspectRatio] = useState<number>(1.4142);
 
-  // 1. 認証：メールアドレス検証 & OTP送信 (現在の activeSignerId のアドレスと一致するか確認)
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
@@ -87,7 +83,6 @@ export const SignView: React.FC<SignViewProps> = ({
     
     setIsVerifying(true);
     const generatedOtp = currentSigner?.otp || '123456';
-    
     const result = await sendOtpEmail(currentSigner.email, currentSigner.name, generatedOtp, title);
     
     setIsVerifying(false);
@@ -98,7 +93,6 @@ export const SignView: React.FC<SignViewProps> = ({
     }
   };
 
-  // 2. 認証：OTP確認 (デモコードは無効化、完全ランダム一致のみ)
   const handleVerifyOtp = (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
@@ -108,7 +102,6 @@ export const SignView: React.FC<SignViewProps> = ({
 
     setTimeout(() => {
       setIsVerifying(false);
-      // ランダムOTPのみで通過 ★修正
       if (otp === expectedOtp) {
         setIsAuthenticated(true);
       } else {
@@ -117,7 +110,6 @@ export const SignView: React.FC<SignViewProps> = ({
     }, 1000);
   };
 
-  // PDFのロード処理
   useEffect(() => {
     if (!isAuthenticated || !originalPdfFile) return;
 
@@ -131,7 +123,6 @@ export const SignView: React.FC<SignViewProps> = ({
         setPdfDoc(pdf);
         setNumPages(pdf.numPages);
 
-        // 最初のページの縦横比を動的に計測してセットする ★追加
         if (pdf.numPages > 0) {
           const firstPage = await pdf.getPage(1);
           const viewport = firstPage.getViewport({ scale: 1.0 });
@@ -149,7 +140,6 @@ export const SignView: React.FC<SignViewProps> = ({
     fileReader.readAsArrayBuffer(originalPdfFile);
   }, [isAuthenticated, originalPdfFile]);
 
-  // メイン of PDFキャンバスのレンダリング ★Retina高画質対応（用紙サイズズレ完全解消版）
   const renderMainPage = async (page: pdfjsLib.PDFPageProxy, pageNum: number) => {
     const pageContainer = pageRefs.current[pageNum];
     if (!pageContainer) return;
@@ -158,11 +148,9 @@ export const SignView: React.FC<SignViewProps> = ({
     if (oldCanvas) oldCanvas.remove();
 
     const canvas = document.createElement('canvas');
-    // Canvasはコンテナ全体に absolute フィット
     canvas.className = 'absolute inset-0 w-full h-full shadow-md rounded-lg';
     pageContainer.insertBefore(canvas, pageContainer.firstChild);
 
-    // 高解像度（2.5倍）で内部解像度を決定
     const containerWidth = pageContainer.clientWidth || 600;
     const initialViewport = page.getViewport({ scale: 1.0 });
     const scale = containerWidth / initialViewport.width;
@@ -178,7 +166,6 @@ export const SignView: React.FC<SignViewProps> = ({
     }
   };
 
-  // PDFのロード・パース完了後、DOMがマウントされてからプレビューを確実に描画する
   useEffect(() => {
     if (isLoadingPdf || !pdfDoc || numPages === 0) return;
 
@@ -200,9 +187,7 @@ export const SignView: React.FC<SignViewProps> = ({
     return () => clearTimeout(timer);
   }, [isLoadingPdf, pdfDoc, numPages, fields]);
 
-  // 署名マージ & 送信確定処理 (pdf-lib)
   const handleCompleteSign = async () => {
-    // 自身の必須フィールドがすべて埋まっているか確認
     const myFields = fields.filter(f => f.signerId === activeSignerId);
     const emptyRequiredField = myFields.find(f => f.isRequired !== false && !f.value && f.type !== 'checkbox');
     if (emptyRequiredField) {
@@ -210,7 +195,6 @@ export const SignView: React.FC<SignViewProps> = ({
       return;
     }
 
-    // デフォルト名（「署名者 1」「署名者 2」や「署名」）のままで署名完了を押すのをブロック ★追加
     const defaultNames = ['署名者 1', '署名者 2', '署名者1', '署名者2', '署名', ''];
     const hasDefaultSignature = myFields.some(f => {
       if (f.type === 'signature' && f.value) {
@@ -255,7 +239,6 @@ export const SignView: React.FC<SignViewProps> = ({
         
         const page = pages[field.pageNumber - 1];
         
-        // MediaBox または CropBox から正確な物理境界サイズとオフセット座標を取得する ★超重要（ズレ解消の根本治療）
         const mediaBox = page.getMediaBox();
         const cropBox = page.getCropBox() || mediaBox;
         
@@ -273,24 +256,21 @@ export const SignView: React.FC<SignViewProps> = ({
           if (valueToEmbed.startsWith('typed:')) {
             const [_, nameText] = valueToEmbed.split(':');
             
-            // 日本語フォント制限を回避するため、Canvas上に筆記体で描画してPNG画像化 ★修正（JSTタイムスタンプ追加）
             const canvas = document.createElement('canvas');
             canvas.width = 300;
-            canvas.height = 120; // タイムスタンプ表示領域確保のため高さを拡張
+            canvas.height = 120;
             const ctx = canvas.getContext('2d');
             if (ctx) {
               ctx.clearRect(0, 0, 300, 120);
               
-              // 1. 署名者氏名
-              ctx.fillStyle = '#0f172a'; // 深い紺色の署名カラー
+              ctx.fillStyle = '#0f172a';
               ctx.font = 'italic bold 32px Georgia, cursive, sans-serif';
               ctx.textBaseline = 'middle';
               ctx.textAlign = 'center';
               ctx.fillText(nameText, 150, 40);
               
-              // 2. 日本時間タイムスタンプ印字 ★追加
               const jstTime = getJstTimestamp();
-              ctx.fillStyle = '#64748b'; // セキュアグレー
+              ctx.fillStyle = '#64748b';
               ctx.font = '10px monospace';
               ctx.fillText(`JST: ${jstTime}`, 150, 85);
               ctx.fillText(`AUDIT ID: ${field.id}`, 150, 100);
@@ -342,7 +322,6 @@ export const SignView: React.FC<SignViewProps> = ({
             borderWidth: 1
           });
         } else {
-          // 氏名・会社名・日付・テキストも日本語に対応するため、Canvasを介してPNG埋め込み ★修正
           const canvas = document.createElement('canvas');
           canvas.width = 400;
           canvas.height = 80;
@@ -394,7 +373,6 @@ export const SignView: React.FC<SignViewProps> = ({
     } else {
       setActiveInputField(field);
       
-      // 初期値の設定（デフォルトの「署名者 1」等のダミー値は空文字にして、ユーザーに手入力させる）
       const currentValue = field.value || '';
       const extractedVal = currentValue.startsWith('typed:') 
         ? currentValue.split(':')[1] 
@@ -514,7 +492,6 @@ export const SignView: React.FC<SignViewProps> = ({
     return badgeBgs[index % badgeBgs.length] || 'bg-zinc-600';
   };
 
-  // 認証画面 (ダッシュボードへのリンクを完全削除) ★修正
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-[#09090b] text-[#f5f5f7] flex flex-col justify-center items-center p-6 relative overflow-hidden">
@@ -579,10 +556,8 @@ export const SignView: React.FC<SignViewProps> = ({
     );
   }
 
-  // 認証後の署名入力画面
   return (
     <div className="h-screen bg-[#09090b] text-[#f5f5f7] flex flex-col overflow-hidden">
-      {/* Top Header */}
       <header className="border-b border-white/5 bg-[#09090b]/80 backdrop-blur-md px-6 h-16 flex items-center justify-between z-10">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
@@ -606,10 +581,7 @@ export const SignView: React.FC<SignViewProps> = ({
         </div>
       </header>
 
-      {/* Main Signing Area */}
       <div className="flex-1 flex overflow-hidden">
-        
-        {/* PDF Viewer Container */}
         <main className="flex-1 overflow-y-auto bg-[#141416]/50 p-6 md:p-10 flex justify-center items-start">
           {isLoadingPdf ? (
             <div className="flex flex-col items-center gap-4 text-center mt-20">
@@ -622,7 +594,7 @@ export const SignView: React.FC<SignViewProps> = ({
                 <Info size={16} className="flex-shrink-0 text-blue-400 mt-0.5" />
                 <div>
                   <p className="font-semibold">署名手順</p>
-                  <p className="mt-0.5">あなた専用のカラー枠をクリックすると Joint 署名・氏名・テキストの入力モーダルが表示されます。すべての項目を入力し終えたら、右上の「署名を完了」を押してください。</p>
+                  <p className="mt-0.5">あなた専用のカラー枠をクリックすると署名・氏名・テキストの入力モーダルが表示されます。すべての項目を入力し終えたら、右上の「署名を完了」を押してください。</p>
                 </div>
               </div>
 
@@ -639,7 +611,6 @@ export const SignView: React.FC<SignViewProps> = ({
                     {fields
                       .filter((f) => f.pageNumber === pageNum)
                       .map((field) => {
-                        // 既に値が書き込み保存されている他人のフィールドは、画面上の枠としては重ねて非表示にする ★修正
                         if (field.value && field.signerId !== activeSignerId) return null;
 
                         const isFilled = !!field.value;
@@ -685,7 +656,6 @@ export const SignView: React.FC<SignViewProps> = ({
         </main>
       </div>
 
-      {/* 入力用モーダル (window.prompt を完全廃止しスマホ対応) */}
       {activeInputField && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
           <Card className="w-full max-w-sm border-white/10 bg-[#121214]/90 shadow-3xl">
