@@ -73,6 +73,7 @@ export const SignView: React.FC<SignViewProps> = ({
   // 入力モーダル用ステート ★追加
   const [activeInputField, setActiveInputField] = useState<Field | null>(null);
   const [modalInputValue, setModalInputValue] = useState('');
+  const [pdfAspectRatio, setPdfAspectRatio] = useState<number>(1.4142); // ★動的アスペクト比ステート追加
 
   // 1. 認証：メールアドレス検証 & OTP送信 (現在の activeSignerId のアドレスと一致するか確認)
   const handleSendOtp = async (e: React.FormEvent) => {
@@ -129,6 +130,15 @@ export const SignView: React.FC<SignViewProps> = ({
         const pdf = await loadingTask.promise;
         setPdfDoc(pdf);
         setNumPages(pdf.numPages);
+
+        // 最初のページの縦横比を動的に計測してセットする ★追加
+        if (pdf.numPages > 0) {
+          const firstPage = await pdf.getPage(1);
+          const viewport = firstPage.getViewport({ scale: 1.0 });
+          if (viewport.width > 0) {
+            setPdfAspectRatio(viewport.height / viewport.width);
+          }
+        }
       } catch (error) {
         console.error('Error rendering PDF for sign:', error);
         alert('PDFファイルの読み込みに失敗しました。');
@@ -139,37 +149,32 @@ export const SignView: React.FC<SignViewProps> = ({
     fileReader.readAsArrayBuffer(originalPdfFile);
   }, [isAuthenticated, originalPdfFile]);
 
-  // メイン of PDFキャンバスのレンダリング ★Retina高画質対応（解像度2.5倍）
+  // メイン of PDFキャンバスのレンダリング ★Retina高画質対応（用紙サイズズレ完全解消版）
   const renderMainPage = async (page: pdfjsLib.PDFPageProxy, pageNum: number) => {
     const pageContainer = pageRefs.current[pageNum];
     if (!pageContainer) return;
-
-    const containerWidth = pageContainer.clientWidth || 600;
-    const initialViewport = page.getViewport({ scale: 1.0 });
-    const scale = containerWidth / initialViewport.width;
-    
-    // スマホ・PC高解像度ディスプレイでクッキリ読めるように2.5倍で描画
-    const outputScale = 2.5;
-    const viewport = page.getViewport({ scale: scale * outputScale });
 
     const oldCanvas = pageContainer.querySelector('canvas');
     if (oldCanvas) oldCanvas.remove();
 
     const canvas = document.createElement('canvas');
+    // Canvasはコンテナ全体に absolute フィット
+    canvas.className = 'absolute inset-0 w-full h-full shadow-md rounded-lg';
+    pageContainer.insertBefore(canvas, pageContainer.firstChild);
+
+    // 高解像度（2.5倍）で内部解像度を決定
+    const containerWidth = pageContainer.clientWidth || 600;
+    const initialViewport = page.getViewport({ scale: 1.0 });
+    const scale = containerWidth / initialViewport.width;
+    const outputScale = 2.5;
+    const viewport = page.getViewport({ scale: scale * outputScale });
+
     canvas.width = viewport.width;
     canvas.height = viewport.height;
-    // CSSで元のコンテナ幅に合わせて表示
-    canvas.style.width = '100%';
-    canvas.style.height = '100%';
-    canvas.className = 'shadow-md border border-white/5 rounded-lg';
-    pageContainer.insertBefore(canvas, pageContainer.firstChild);
 
     const context = canvas.getContext('2d');
     if (context) {
       await page.render({ canvasContext: context, viewport, canvas }).promise;
-      // ★親コンテナ（pageContainer）のサイズを描画後のCanvasの実際のピクセルサイズにピタッと合わせる！
-      pageContainer.style.width = `${canvas.clientWidth}px`;
-      pageContainer.style.height = `${canvas.clientHeight}px`;
     }
   };
 
@@ -619,7 +624,8 @@ export const SignView: React.FC<SignViewProps> = ({
                   ref={(el) => {
                     pageRefs.current[pageNum] = el;
                   }}
-                  className="relative bg-white rounded-lg shadow-xl mx-auto overflow-hidden shadow-2xl border border-white/5"
+                  style={{ aspectRatio: `1 / ${pdfAspectRatio}` }}
+                  className="relative w-full bg-white rounded-lg shadow-xl mx-auto overflow-hidden border border-white/5"
                 >
                   <div className="absolute inset-0 z-20 pointer-events-auto">
                     {fields
@@ -634,11 +640,7 @@ export const SignView: React.FC<SignViewProps> = ({
                         return (
                           <div
                             key={field.id}
-                             onClick={() => handleFieldClick(field)}
-                             onTouchStart={(e) => {
-                               e.preventDefault();
-                               handleFieldClick(field);
-                             }}
+                            onClick={() => handleFieldClick(field)}
                             style={{
                               left: `${field.x}%`,
                               top: `${field.y}%`,
@@ -646,7 +648,7 @@ export const SignView: React.FC<SignViewProps> = ({
                               height: `${field.h}%`
                             }}
                             className={`absolute flex items-center justify-center border-2 rounded transition-all duration-200 ${colors} ${
-                              isMyField ? 'cursor-pointer animate-pulse' : 'cursor-not-allowed'
+                              isMyField ? 'cursor-pointer animate-pulse z-30' : 'cursor-not-allowed z-10'
                             }`}
                           >
                             <div className={`absolute -top-4.5 left-0 px-1 py-0.5 rounded text-[8px] text-white ${badgeBg} scale-90 origin-bottom-left select-none font-medium`}>
