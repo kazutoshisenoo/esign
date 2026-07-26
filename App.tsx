@@ -331,6 +331,7 @@ function App() {
 
         if (!token) return;
 
+        const rawData = searchParams.get('data') || '';
         const foundDoc = documents.find(d => d.signToken === token);
         const docId = foundDoc ? foundDoc.id : '';
         const fileId = fileIdParam || foundDoc?.fileId || '';
@@ -350,6 +351,28 @@ function App() {
 
         if (!file) {
           file = await generateDemoPdf();
+        }
+
+        // URLパラメータの data から署名者情報とフィールドデータを復元する ★超重要（中間進捗の完全同期）
+        if (rawData) {
+          try {
+            const decodedJson = decodeURIComponent(escape(atob(rawData)));
+            const parsed = JSON.parse(decodedJson);
+            if (parsed.fields) setFields(parsed.fields);
+            if (parsed.signers) setSigners(parsed.signers);
+            if (parsed.title) setPdfTitle(parsed.title);
+            if (parsed.ccEmails) setCcEmails(parsed.ccEmails);
+            setSignToken(token);
+            setCurrentDocumentId(docId || `doc-${Date.now()}`);
+            
+            const targetSignerId = signerIdParam || (parsed.signers && parsed.signers[0]?.id) || 'signer-1';
+            setActiveSignerId(targetSignerId);
+            if (file) setPdfFile(file);
+            setView('sign');
+            return;
+          } catch (e) {
+            console.error('Failed to restore data from URL parameter:', e);
+          }
         }
 
         // 既存の foundDoc を使用
@@ -680,16 +703,24 @@ function App() {
       return d;
     }));
 
+    const currentGasUrlVal = getGasUrl();
+    const encodedGasVal = currentGasUrlVal ? encodeURIComponent(btoa(unescape(encodeURIComponent(currentGasUrlVal)))) : '';
+    const gasParamStrVal = encodedGasVal ? `&gas=${encodedGasVal}` : '';
+    const fileIdParamStrVal = activeFileId ? `&fileId=${activeFileId}` : '';
+
     const nextUnsigned = updatedSigners.find(s => s.status === 'pending');
     if (nextUnsigned) {
       setActiveSignerId(nextUnsigned.id);
       
-      // 直列フロー：次の署名者に、最新のPDF（activeFileId）を埋め込んだ署名リンクを送る ★追加
-      const currentGasUrlVal = getGasUrl();
-      const encodedGasVal = currentGasUrlVal ? encodeURIComponent(btoa(unescape(encodeURIComponent(currentGasUrlVal)))) : '';
-      const gasParamStrVal = encodedGasVal ? `&gas=${encodedGasVal}` : '';
-      const fileIdParamStrVal = activeFileId ? `&fileId=${activeFileId}` : '';
-      const signLink = `${window.location.origin}${getBasePath()}/sign/${signToken}?signer=${nextUnsigned.id}${gasParamStrVal}${fileIdParamStrVal}`;
+      const nextDocData = {
+        fields: updatedFields,
+        signers: updatedSigners,
+        title: pdfTitle,
+        ccEmails: currentDoc?.ccEmails || ccEmails,
+        ownerEmail: userEmail
+      };
+      const encodedNextData = encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(nextDocData)))));
+      const signLink = `${window.location.origin}${getBasePath()}/sign/${signToken}?signer=${nextUnsigned.id}${gasParamStrVal}${fileIdParamStrVal}&data=${encodedNextData}`;
       
       console.log(`Sending next sign request to ${nextUnsigned.name} with updated fileId: ${activeFileId}`);
       sendSignRequestEmail(nextUnsigned.email, nextUnsigned.name, pdfTitle, signLink)
@@ -701,11 +732,6 @@ function App() {
           }
         });
     }
-    
-    const currentGasUrlVal = getGasUrl();
-    const encodedGasVal = currentGasUrlVal ? encodeURIComponent(btoa(unescape(encodeURIComponent(currentGasUrlVal)))) : '';
-    const gasParamStrVal = encodedGasVal ? `&gas=${encodedGasVal}` : '';
-    const fileIdParamStrVal = activeFileId ? `&fileId=${activeFileId}` : '';
     
     const finalDocData = {
       fields: updatedFields,
